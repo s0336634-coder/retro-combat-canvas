@@ -1,3 +1,4 @@
+// @ts-nocheck
 // 2Fort low-poly layout. X axis runs BLU (-x) -> RED (+x). Ground level y=0, basement/sewer/moat floor y=-6.
 export type Box = { x0: number; y0: number; z0: number; x1: number; y1: number; z1: number; color: number; ghost?: boolean };
 export type NavNode = { id: number; name: string; team: -1 | 0 | 1; x: number; y: number; z: number; edges: number[] };

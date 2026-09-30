@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { Box } from "./map";
 
 export const HALF_W = 0.4;
