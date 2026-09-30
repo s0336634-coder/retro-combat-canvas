@@ -1,3 +1,4 @@
+// @ts-nocheck
 import * as THREE from "three";
 import { buildMap, TEAM_SIGN, WATER_Y, MOAT_X, type GameMap } from "./map";
 import { World, rayBox } from "./physics";

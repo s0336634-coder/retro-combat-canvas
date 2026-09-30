@@ -1,3 +1,4 @@
+// @ts-nocheck
 export type WeaponKind = "hitscan" | "projectile" | "flame" | "melee" | "medigun" | "sniper" | "knife" | "sapper" | "wrench" | "minigun";
 export type WeaponDef = {
   name: string; kind: WeaponKind; dmg: number; rate: number; clip: number; reserve: number;

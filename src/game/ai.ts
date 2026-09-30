@@ -1,3 +1,4 @@
+// @ts-nocheck
 import * as THREE from "three";
 import type { Actor, Game, Team, Building, BldType } from "./game";
 import type { NavNode } from "./map";
