@@ -3,4 +3,4 @@
 - [x] Improve player and bot weapon models.
 - [x] Add visible, travelling rockets to level-three sentries.
 - [x] Make sniper NPCs miss some shots.
-- [ ] Verify build and live gameplay rendering.
+- [x] Verify build and live gameplay rendering.
