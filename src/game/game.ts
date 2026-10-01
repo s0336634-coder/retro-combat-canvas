@@ -157,7 +157,7 @@ export class Game {
       tube(0.045, 0.38, metal, 0, 0.03, -0.68, 8); box(0.09, 0.24, 0.2, wood, 0, -0.18, -0.03);
       if (def.pellets && def.pellets > 1) tube(0.07, 0.12, dark, 0, 0.03, -0.92, 10);
     }
-    g.scale.setScalar(firstPerson ? 0.82 : 0.72);
+    g.scale.setScalar(firstPerson ? 0.58 : 0.72);
     g.traverse((o) => { if (o instanceof THREE.Mesh) { o.castShadow = true; o.userData.weaponPart = true; } });
     g.userData.weaponKey = def.name;
     return g;
