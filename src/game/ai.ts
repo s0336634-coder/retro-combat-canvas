@@ -145,7 +145,8 @@ export function botThink(a: Actor, g: Game, dt: number) {
     if (b.target && !b.target.alive) b.target = null;
     b.targetBld = per.bld;
     b.state = chooseState(g, a);
-    b.aimErr.set((Math.random() - 0.5), (Math.random() - 0.5), (Math.random() - 0.5)).multiplyScalar(a.cls === "sniper" ? 0.15 : 0.45);
+    const sniperMiss = a.cls === "sniper" && Math.random() < 0.28;
+    b.aimErr.set((Math.random() - 0.5), (Math.random() - 0.5), (Math.random() - 0.5)).multiplyScalar(sniperMiss ? 4.5 : a.cls === "sniper" ? 0.12 : 0.45);
   }
 
   let moveTo: THREE.Vector3 | null = null;
@@ -361,7 +362,7 @@ function combat(g: Game, a: Actor, dt: number): { move: THREE.Vector3 | null; lo
       inp.slot = 0;
       if (!a.scoped && a.onGround) inp.alt = !a.altPrev;
       const hy = t.pos.y + t.h - 0.2;
-      look = new THREE.Vector3(t.pos.x, hy, t.pos.z).addScaledVector(b.aimErr, 0.4);
+      look = new THREE.Vector3(t.pos.x, hy, t.pos.z).add(b.aimErr);
       inp.fire = a.scoped && b.reactT <= 0 && (a.charge > 0.6 || t.hp < 60) && Math.abs(angleTo(a, g, look)) < 0.03;
       return { move: null, look };
     }

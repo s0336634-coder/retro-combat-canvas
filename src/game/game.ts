@@ -20,7 +20,7 @@ export type Actor = {
   burnT: number; burnBy: Actor | null; burnTick: number; uber: number; uberT: number; invulnT: number;
   metal: number; cloaked: boolean; cloak: number; disguised: boolean; revT: number; scoped: boolean; charge: number;
   healTarget: Actor | null; air: number; drownTick: number; input: Input; mesh: THREE.Group; bodyMat: THREE.MeshLambertMaterial;
-  mats: THREE.MeshLambertMaterial[]; gunMesh: THREE.Mesh; brain: Brain | null; kills: number; deaths: number;
+  mats: THREE.MeshLambertMaterial[]; gunMesh: THREE.Group; brain: Brain | null; kills: number; deaths: number;
   carrying: boolean; buildMode: BldType | null; lastAttacker: Actor | null; airblastT: number; inWater: boolean;
 };
 export type Building = {
@@ -71,7 +71,8 @@ export class Game {
   private ghost: THREE.Mesh;
   private ghostValid = false;
   private ghostPos = new THREE.Vector3();
-  private viewmodel: THREE.Mesh;
+  private viewmodel: THREE.Group;
+  private viewmodelKey = "";
   private idc = 1;
   private minimap: HTMLCanvasElement | null;
   private matCache = new Map<number, THREE.MeshLambertMaterial>();
@@ -92,7 +93,7 @@ export class Game {
     this.ghost = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), gm);
     this.ghost.visible = false;
     this.scene.add(this.ghost);
-    this.viewmodel = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.6), new THREE.MeshLambertMaterial({ color: 0x555555 }));
+    this.viewmodel = new THREE.Group();
     this.viewmodel.position.set(0.28, -0.25, -0.55);
     this.camera.add(this.viewmodel);
 
@@ -112,6 +113,54 @@ export class Game {
     let m = this.matCache.get(color);
     if (!m) { m = new THREE.MeshLambertMaterial({ color }); this.matCache.set(color, m); }
     return m;
+  }
+  makeWeaponModel(def: WeaponDef, team: Team, firstPerson = false) {
+    const g = new THREE.Group();
+    const base = new THREE.MeshLambertMaterial({ color: def.color });
+    const dark = new THREE.MeshLambertMaterial({ color: 0x242424 });
+    const metal = new THREE.MeshLambertMaterial({ color: 0x8a8d89 });
+    const accent = new THREE.MeshLambertMaterial({ color: TEAM_COLOR[team] });
+    const wood = new THREE.MeshLambertMaterial({ color: 0x704729 });
+    const box = (w: number, h: number, d: number, mat: THREE.Material, x = 0, y = 0, z = 0) => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); mesh.position.set(x, y, z); g.add(mesh); return mesh;
+    };
+    const tube = (r: number, len: number, mat: THREE.Material, x = 0, y = 0, z = 0, sides = 10) => {
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, sides), mat); mesh.rotation.x = Math.PI / 2; mesh.position.set(x, y, z); g.add(mesh); return mesh;
+    };
+    const melee = ["melee", "knife", "wrench"].includes(def.kind);
+    if (melee) {
+      box(0.07, 0.08, 0.7, wood, 0, -0.03, 0);
+      if (def.kind === "knife") { const blade = box(0.04, 0.13, 0.48, metal, 0, 0.02, -0.55); blade.rotation.x = -0.08; }
+      else if (def.kind === "wrench") { box(0.12, 0.06, 0.36, metal, 0, 0.02, -0.5); box(0.28, 0.08, 0.12, metal, 0, 0.02, -0.68); }
+      else { box(def.name === "Bat" ? 0.12 : 0.24, 0.12, 0.28, base, 0, 0, -0.48); }
+    } else if (def.kind === "minigun") {
+      tube(0.22, 0.48, base, 0, 0, -0.12, 12); box(0.28, 0.28, 0.28, dark, 0, 0, 0.18);
+      for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; tube(0.025, 0.62, metal, Math.cos(a) * 0.11, Math.sin(a) * 0.11, -0.62, 6); }
+      tube(0.16, 0.05, dark, 0, 0, -0.95, 10);
+    } else if (def.proj === "rocket") {
+      tube(0.17, 0.95, base, 0, 0, -0.28, 12); tube(0.2, 0.12, dark, 0, 0, -0.8, 12);
+      box(0.08, 0.13, 0.5, wood, 0, -0.17, 0.05); box(0.05, 0.12, 0.12, metal, 0, 0.19, -0.22);
+    } else if (def.kind === "sniper") {
+      box(0.13, 0.16, 0.95, wood, 0, 0, -0.25); tube(0.045, 0.72, metal, 0, 0.03, -0.92, 8);
+      tube(0.075, 0.42, dark, 0, 0.16, -0.33, 10); box(0.06, 0.18, 0.3, wood, 0, -0.16, 0.02);
+    } else if (def.kind === "flame") {
+      box(0.24, 0.28, 0.48, base, 0, 0, -0.1); tube(0.08, 0.65, metal, 0, 0.02, -0.64, 10);
+      tube(0.13, 0.12, dark, 0, 0.02, -1.01, 10); tube(0.11, 0.3, accent, 0.2, 0.02, 0.02, 10);
+    } else if (def.kind === "medigun") {
+      box(0.3, 0.3, 0.52, base, 0, 0, -0.12); tube(0.09, 0.45, accent, 0, 0.01, -0.58, 10);
+      box(0.12, 0.12, 0.15, dark, 0, -0.18, 0.02);
+    } else if (def.proj === "grenade" || def.proj === "sticky") {
+      box(0.28, 0.25, 0.62, base, 0, 0, -0.2); tube(0.17, 0.32, dark, 0, -0.02, -0.58, 8);
+      for (let i = 0; i < 3; i++) tube(0.045, 0.38, metal, (i - 1) * 0.1, 0.15, -0.15, 8);
+    } else {
+      box(0.18, 0.2, def.name === "Pistol" || def.name === "Revolver" ? 0.52 : 0.72, base, 0, 0, -0.2);
+      tube(0.045, 0.38, metal, 0, 0.03, -0.68, 8); box(0.09, 0.24, 0.2, wood, 0, -0.18, -0.03);
+      if (def.pellets && def.pellets > 1) tube(0.07, 0.12, dark, 0, 0.03, -0.92, 10);
+    }
+    g.scale.setScalar(firstPerson ? 1.25 : 0.72);
+    g.traverse((o) => { if (o instanceof THREE.Mesh) { o.castShadow = true; o.userData.weaponPart = true; } });
+    g.userData.weaponKey = def.name;
+    return g;
   }
   buildWorld() {
     const hemi = new THREE.HemisphereLight(0xdfefff, 0x5a5040, 1.3);
@@ -169,8 +218,9 @@ export class Game {
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.38, 0.38), skin); head.position.y = 1.62;
     const hat = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.14, 0.45), hatM); hat.position.y = 1.86;
     const gunMat = new THREE.MeshLambertMaterial({ color: 0x444444 });
-    const gun = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.7), gunMat); gun.position.set(0.35 * big, 1.1, -0.35);
-    for (const m of [legs, torso, head, hat, gun]) { m.castShadow = true; g.add(m); }
+    const gun = new THREE.Group(); gun.position.set(0.35 * big, 1.1, -0.35);
+    for (const m of [legs, torso, head, hat]) { m.castShadow = true; g.add(m); }
+    g.add(gun);
     this.scene.add(g);
     return { g, bodyMat, mats: [bodyMat, skin, dark, hatM, gunMat], gun };
   }
@@ -210,6 +260,7 @@ export class Game {
     a.metal = 200; a.cloaked = false; a.cloak = 1; a.disguised = false; a.scoped = false; a.charge = 0; a.revT = 0;
     a.burnT = 0; a.air = 12; a.healTarget = null; a.buildMode = null; a.carrying = false;
     a.mesh.visible = !a.isBot ? false : true;
+    if (a.isBot) this.syncActorWeapon(a);
     this.refreshLook(a);
     if (a.brain) a.brain.reset(this);
   }
@@ -218,6 +269,7 @@ export class Game {
     this.scene.remove(a.mesh);
     const m = this.makeActorMesh(a.team, cls);
     a.mesh = m.g; a.bodyMat = m.bodyMat; a.mats = m.mats; a.gunMesh = m.gun; a.cls = cls;
+    a.gunMesh.userData.weaponKey = "";
     if (!a.isBot) a.mesh.visible = false;
   }
   requestClass(cls: ClassId) {
@@ -458,6 +510,24 @@ export class Game {
   }
 
   // ---------------- weapons ----------------
+  syncActorWeapon(a: Actor) {
+    const def = a.weapons[a.slot]?.def;
+    if (!def || a.gunMesh.userData.weaponKey === def.name) return;
+    a.gunMesh.clear();
+    const model = this.makeWeaponModel(def, a.team);
+    model.rotation.y = Math.PI;
+    a.gunMesh.add(model);
+    a.gunMesh.userData.weaponKey = def.name;
+  }
+  syncViewmodel(a: Actor) {
+    const def = a.weapons[a.slot]?.def;
+    if (!def || this.viewmodelKey === def.name) return;
+    this.viewmodel.clear();
+    const model = this.makeWeaponModel(def, a.team, true);
+    model.rotation.y = Math.PI;
+    this.viewmodel.add(model);
+    this.viewmodelKey = def.name;
+  }
   fireLogic(a: Actor, dt: number) {
     const inp = a.input, w = a.weapons[a.slot], def = w.def;
     const altEdge = inp.alt && !a.altPrev;
@@ -780,6 +850,9 @@ export class Game {
       const hg = new THREE.Group(); hg.position.y = 0.75;
       const hb = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.4, 0.6), new THREE.MeshLambertMaterial({ color: col })); hg.add(hb);
       const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.7), new THREE.MeshLambertMaterial({ color: 0x222222 })); barrel.position.z = -0.5; hg.add(barrel);
+      const pods = new THREE.Group(); pods.name = "rocket-pods"; pods.visible = false;
+      for (const x of [-0.38, 0.38]) { const pod = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.28, 0.45), new THREE.MeshLambertMaterial({ color: 0x444444 })); pod.position.set(x, 0.05, -0.08); pods.add(pod); for (const y of [-0.07, 0.07]) { const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.32, 8), new THREE.MeshLambertMaterial({ color: 0x252525 })); tube.rotation.x = Math.PI / 2; tube.position.set(x, y + 0.05, -0.38); pods.add(tube); } }
+      hg.add(pods);
       g.add(hg); head = hg;
     } else if (type === "dispenser") {
       m(0.8, 1.3, 0.8, col, 0.65); m(0.5, 0.3, 0.05, 0xffffcc, 0.9).position.z = -0.42;
@@ -800,7 +873,7 @@ export class Game {
     if (b.buildT > 0) { b.buildT = Math.max(0, b.buildT - 0.8); return; }
     if (b.level < 3 && a.metal > 0 && b.type === "sentry") {
       const use = Math.min(25, a.metal); b.upgrade += use; a.metal -= use;
-      if (b.upgrade >= 200) { b.upgrade = 0; b.level++; b.maxHp = b.level === 2 ? 180 : 216; b.hp = b.maxHp; b.mesh.scale.setScalar(1 + (b.level - 1) * 0.15); this.feed(`${a.name} upgraded sentry to level ${b.level}`, a.team); }
+      if (b.upgrade >= 200) { b.upgrade = 0; b.level++; b.maxHp = b.level === 2 ? 180 : 216; b.hp = b.maxHp; b.mesh.scale.setScalar(1 + (b.level - 1) * 0.15); const pods = b.mesh.getObjectByName("rocket-pods"); if (pods) pods.visible = b.level === 3; this.feed(`${a.name} upgraded sentry to level ${b.level}`, a.team); }
     }
   }
   damageBuilding(b: Building, dmg: number, from: Actor | null) {
@@ -838,7 +911,8 @@ export class Game {
             this.sound(hp, 25, b.team);
             if (b.level === 3 && this.time >= b.rocketT) {
               b.rocketT = this.time + 3;
-              this.explosion(this.center(target), b.team, b.owner, 60, 2.5, "Sentry Rockets");
+              const rocketDir = this.center(target).sub(hp).normalize();
+              this.fireProjectile(b.owner, { name: "Sentry Rockets", kind: "projectile", proj: "rocket", dmg: 60, splash: 2.5, speed: 24, rate: 3, clip: 0, reserve: 0, color: TEAM_COLOR[b.team] }, hp, rocketDir);
             }
           }
         } else b.yaw += dt * 0.6;
@@ -987,7 +1061,7 @@ export class Game {
         a.mesh.position.copy(a.pos);
         a.mesh.rotation.y = a.yaw;
         a.mesh.scale.y = a.h / 1.8;
-        a.gunMesh.material = this.mat(a.weapons[a.slot].def.color);
+        this.syncActorWeapon(a);
         const glow = this.isInvuln(a) ? 0.8 : 0;
         a.bodyMat.emissive.setHex(glow ? TEAM_COLOR[a.team] : 0);
         a.bodyMat.emissiveIntensity = glow;
@@ -1016,13 +1090,12 @@ export class Game {
     this.viewmodel.visible = p.alive && !p.scoped;
     const vdef = p.weapons[p.slot]?.def;
     if (vdef) {
-      (this.viewmodel.material as THREE.MeshLambertMaterial).color.setHex(vdef.color);
+      this.syncViewmodel(p);
       const kick = this.time < p.nextFire ? Math.max(0, (p.nextFire - this.time) / Math.max(0.1, vdef.rate)) * 0.08 : 0;
       this.viewmodel.position.z = -0.55 + kick;
       const melee = vdef.kind === "melee" || vdef.kind === "knife" || vdef.kind === "wrench";
       this.viewmodel.scale.set(melee ? 0.6 : 1, melee ? 0.6 : 1, melee ? 1.2 : 1);
-      (this.viewmodel.material as THREE.MeshLambertMaterial).opacity = p.cloaked ? 0.3 : 1;
-      (this.viewmodel.material as THREE.MeshLambertMaterial).transparent = p.cloaked;
+      this.viewmodel.traverse((o) => { if (o instanceof THREE.Mesh) { const mat = o.material as THREE.MeshLambertMaterial; mat.opacity = p.cloaked ? 0.3 : 1; mat.transparent = p.cloaked; } });
     }
     // engineer blueprint ghost
     this.ghost.visible = false;
