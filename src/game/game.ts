@@ -21,7 +21,7 @@ export type Actor = {
   metal: number; cloaked: boolean; cloak: number; disguised: boolean; revT: number; scoped: boolean; charge: number;
   healTarget: Actor | null; air: number; drownTick: number; input: Input; mesh: THREE.Group; bodyMat: THREE.MeshLambertMaterial;
   mats: THREE.MeshLambertMaterial[]; gunMesh: THREE.Group; brain: Brain | null; kills: number; deaths: number;
-  carrying: boolean; buildMode: BldType | null; lastAttacker: Actor | null; airblastT: number; inWater: boolean;
+  carrying: boolean; buildMode: BldType | null; lastAttacker: Actor | null; airblastT: number; inWater: boolean; weaponAnim: number;
 };
 export type Building = {
   id: number; type: BldType; team: Team; owner: Actor; pos: THREE.Vector3; hp: number; maxHp: number; level: number;
@@ -77,6 +77,7 @@ export class Game {
   private minimap: HTMLCanvasElement | null;
   private matCache = new Map<number, THREE.MeshLambertMaterial>();
   private disposers: (() => void)[] = [];
+  private hurtDirection = 0;
 
   constructor(private canvas: HTMLCanvasElement, minimap: HTMLCanvasElement | null, team: Team, cls: ClassId) {
     this.minimap = minimap;
@@ -129,10 +130,24 @@ export class Game {
     };
     const melee = ["melee", "knife", "wrench"].includes(def.kind);
     if (melee) {
-      box(0.07, 0.08, 0.7, wood, 0, -0.03, 0);
-      if (def.kind === "knife") { const blade = box(0.04, 0.13, 0.48, metal, 0, 0.02, -0.55); blade.rotation.x = -0.08; }
-      else if (def.kind === "wrench") { box(0.12, 0.06, 0.36, metal, 0, 0.02, -0.5); box(0.28, 0.08, 0.12, metal, 0, 0.02, -0.68); }
-      else { box(def.name === "Bat" ? 0.12 : 0.24, 0.12, 0.28, base, 0, 0, -0.48); }
+      if (def.name === "Fists") {
+        for (const x of [-0.18, 0.18]) { const fist = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16, 0), base); fist.position.set(x, -0.02, -0.5); g.add(fist); }
+      } else {
+        box(0.07, 0.08, 0.68, def.name === "Bottle" ? base : wood, 0, -0.03, -0.02);
+        if (def.kind === "knife" || def.name === "Kukri") {
+          const blade = box(def.name === "Kukri" ? 0.1 : 0.045, 0.13, 0.48, metal, 0, 0.02, -0.57); blade.rotation.x = def.name === "Kukri" ? -0.22 : -0.08;
+        } else if (def.kind === "wrench") {
+          box(0.12, 0.07, 0.36, metal, 0, 0.02, -0.5); box(0.3, 0.08, 0.12, metal, 0, 0.02, -0.69);
+        } else if (def.name === "Shovel") {
+          const spade = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.1, 0.3, 4), metal); spade.rotation.x = Math.PI / 2; spade.position.z = -0.58; g.add(spade);
+        } else if (def.name === "Fire Axe") {
+          const axe = box(0.48, 0.22, 0.1, base, 0, 0.02, -0.58); axe.rotation.z = -0.1;
+        } else if (def.name === "Bonesaw") {
+          box(0.09, 0.28, 0.42, metal, 0, 0.05, -0.55); for (let i = 0; i < 4; i++) box(0.035, 0.08, 0.08, metal, 0, -0.12, -0.4 - i * 0.1);
+        } else if (def.name === "Bottle") {
+          tube(0.13, 0.38, base, 0, 0, -0.47, 8); tube(0.06, 0.18, base, 0, 0, -0.75, 8);
+        } else { tube(0.09, 0.5, base, 0, 0, -0.46, def.name === "Bat" ? 10 : 8); }
+      }
     } else if (def.kind === "minigun") {
       tube(0.22, 0.48, base, 0, 0, -0.12, 12); box(0.28, 0.28, 0.28, dark, 0, 0, 0.18);
       for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; tube(0.025, 0.62, metal, Math.cos(a) * 0.11, Math.sin(a) * 0.11, -0.62, 6); }
@@ -213,13 +228,22 @@ export class Game {
     const dark = new THREE.MeshLambertMaterial({ color: 0x3a3028 });
     const hatM = new THREE.MeshLambertMaterial({ color: CLASSES[cls].hat });
     const big = cls === "heavy" ? 1.25 : cls === "scout" || cls === "spy" ? 0.9 : 1;
-    const legs = new THREE.Mesh(new THREE.BoxGeometry(0.55 * big, 0.8, 0.35), dark); legs.position.y = 0.4;
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.75 * big, 0.65, 0.45 * big), bodyMat); torso.position.y = 1.12;
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.38, 0.38), skin); head.position.y = 1.62;
-    const hat = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.14, 0.45), hatM); hat.position.y = 1.86;
+    const limb = (x: number, y: number, h: number, mat: THREE.Material) => { const pivot = new THREE.Group(); pivot.position.set(x, y, 0); const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.22 * big, h, 0.25), mat); mesh.position.y = -h / 2; mesh.castShadow = true; pivot.add(mesh); g.add(pivot); return pivot; };
+    const leftLeg = limb(-0.2 * big, 0.82, 0.78, dark), rightLeg = limb(0.2 * big, 0.82, 0.78, dark);
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.76 * big, cls === "heavy" ? 0.78 : 0.68, 0.48 * big), bodyMat); torso.position.y = 1.15;
+    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.79 * big, 0.12, 0.5 * big), dark); belt.position.y = 0.88;
+    const head = new THREE.Mesh(new THREE.DodecahedronGeometry(0.25, 1), skin); head.position.y = 1.65;
+    const hat = new THREE.Mesh(new THREE.CylinderGeometry(cls === "soldier" ? 0.3 : 0.24, 0.26, cls === "pyro" ? 0.28 : 0.14, cls === "engineer" ? 6 : 10), hatM); hat.position.y = 1.89;
+    const leftArm = limb(-0.48 * big, 1.42, 0.62, bodyMat), rightArm = limb(0.48 * big, 1.42, 0.62, bodyMat);
     const gunMat = new THREE.MeshLambertMaterial({ color: 0x444444 });
     const gun = new THREE.Group(); gun.position.set(0.35 * big, 1.1, -0.35);
-    for (const m of [legs, torso, head, hat]) { m.castShadow = true; g.add(m); }
+    for (const m of [torso, belt, head, hat]) { m.castShadow = true; g.add(m); }
+    if (cls === "medic") { const pack = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.65, 0.24), hatM); pack.position.set(0, 1.2, 0.34); g.add(pack); }
+    if (cls === "engineer") { const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.05, 8), hatM); brim.position.y = 1.82; g.add(brim); }
+    if (cls === "pyro") { const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.68, 8), gunMat); tank.position.set(0, 1.18, 0.38); g.add(tank); }
+    if (cls === "demoman") for (let i = 0; i < 3; i++) { const grenade = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 4), gunMat); grenade.position.set(-0.18 + i * 0.18, 1.22, -0.27); g.add(grenade); }
+    if (cls === "sniper") { const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.04, 10), hatM); brim.position.y = 1.83; g.add(brim); }
+    g.userData.leftLeg = leftLeg; g.userData.rightLeg = rightLeg; g.userData.leftArm = leftArm; g.userData.rightArm = rightArm;
     g.add(gun);
     this.scene.add(g);
     return { g, bodyMat, mats: [bodyMat, skin, dark, hatM, gunMat], gun };
@@ -234,7 +258,7 @@ export class Game {
       uber: 0, uberT: 0, invulnT: 0, metal: 200, cloaked: false, cloak: 1, disguised: false, revT: 0, scoped: false, charge: 0,
       healTarget: null, air: 12, drownTick: 0, input: { wx: 0, wz: 0, jump: false, crouch: false, fire: false, alt: false, yaw: 0, pitch: 0, slot: 0, reload: false },
       mesh: m.g, bodyMat: m.bodyMat, mats: m.mats, gunMesh: m.gun, brain: null, kills: 0, deaths: 0, carrying: false,
-      buildMode: null, lastAttacker: null, airblastT: 0, inWater: false,
+      buildMode: null, lastAttacker: null, airblastT: 0, inWater: false, weaponAnim: 0,
     };
     if (isBot) a.brain = makeBrain(a);
     this.actors.push(a);
@@ -568,6 +592,7 @@ export class Game {
     if (a.reloadT > 0 && w.clip <= 0) return;
     a.reloadT = 0;
     a.nextFire = this.time + def.rate;
+    a.weaponAnim = 1;
     if (def.clip > 0) w.clip--;
     if (a.disguised && def.kind !== "sapper") { a.disguised = false; this.refreshLook(a); }
     const eye = this.eye(a), dir = this.dirOf(a.yaw, a.pitch);
@@ -802,7 +827,16 @@ export class Game {
       if (t.brain) t.brain.hurtBy(from, this);
       if (t.cls === "spy" && t.disguised && Math.random() < 0.3) { t.disguised = false; this.refreshLook(t); }
     }
-    if (t === this.player) this.hurtFlash = 0.25;
+    if (t === this.player) {
+      this.hurtFlash = 0.35;
+      if (from) {
+        const dx = from.pos.x - t.pos.x, dz = from.pos.z - t.pos.z;
+        let delta = Math.atan2(-dx, -dz) - t.yaw;
+        while (delta > Math.PI) delta -= Math.PI * 2;
+        while (delta < -Math.PI) delta += Math.PI * 2;
+        this.hurtDirection = delta;
+      }
+    }
     if (t.hp <= 0) this.kill(t, from && from !== t ? from : t.lastAttacker && t.lastAttacker !== t ? t.lastAttacker : null, weapon);
   }
   hurtFlash = 0;
@@ -1060,6 +1094,14 @@ export class Game {
         a.mesh.rotation.y = a.yaw;
         a.mesh.scale.y = a.h / 1.8;
         this.syncActorWeapon(a);
+        const moving = Math.hypot(a.vel.x, a.vel.z) > 0.5 && a.onGround;
+        const stride = moving ? Math.sin(this.time * 9 + a.id) * 0.55 : 0;
+        a.mesh.userData.leftLeg.rotation.x = stride; a.mesh.userData.rightLeg.rotation.x = -stride;
+        a.mesh.userData.leftArm.rotation.x = -stride * 0.45; a.mesh.userData.rightArm.rotation.x = stride * 0.45;
+        a.weaponAnim = Math.max(0, a.weaponAnim - dt * 5);
+        const melee = ["melee", "knife", "wrench"].includes(a.weapons[a.slot]?.def.kind);
+        a.gunMesh.rotation.set(melee ? -a.weaponAnim * 1.4 : a.weaponAnim * 0.12, 0, melee ? -a.weaponAnim * 0.8 : 0);
+        a.gunMesh.position.z = -0.35 + (melee ? 0 : a.weaponAnim * 0.16);
         const glow = this.isInvuln(a) ? 0.8 : 0;
         a.bodyMat.emissive.setHex(glow ? TEAM_COLOR[a.team] : 0);
         a.bodyMat.emissiveIntensity = glow;
@@ -1089,8 +1131,11 @@ export class Game {
     const vdef = p.weapons[p.slot]?.def;
     if (vdef) {
       this.syncViewmodel(p);
-      const kick = this.time < p.nextFire ? Math.max(0, (p.nextFire - this.time) / Math.max(0.1, vdef.rate)) * 0.08 : 0;
-      this.viewmodel.position.z = -0.55 + kick;
+      p.weaponAnim = Math.max(0, p.weaponAnim - dt * 5);
+      const meleeSwing = ["melee", "knife", "wrench"].includes(vdef.kind);
+      const kick = meleeSwing ? 0 : p.weaponAnim * 0.1;
+      this.viewmodel.position.z = -0.7 + kick;
+      this.viewmodel.rotation.set(meleeSwing ? -p.weaponAnim * 1.25 : p.weaponAnim * 0.08, meleeSwing ? p.weaponAnim * 0.45 : 0, meleeSwing ? -p.weaponAnim * 0.8 : 0);
       const melee = vdef.kind === "melee" || vdef.kind === "knife" || vdef.kind === "wrench";
       this.viewmodel.scale.set(melee ? 0.6 : 1, melee ? 0.6 : 1, melee ? 1.2 : 1);
       this.viewmodel.traverse((o) => { if (o instanceof THREE.Mesh) { const mat = o.material as THREE.MeshLambertMaterial; mat.opacity = p.cloaked ? 0.3 : 1; mat.transparent = p.cloaked; } });
@@ -1153,7 +1198,7 @@ export class Game {
       scoped: p.scoped, charge: p.charge, air: p.air, burning: p.burnT > 0, buildMode: p.buildMode, ghostValid: this.ghostValid,
       scores: [...this.scores], flags: this.flags.map((f) => ({ team: f.team, state: f.state, returnT: Math.ceil(f.returnT), carrier: f.carrier?.name ?? null })),
       killfeed: this.killfeed.filter((k) => this.time - k.t < 8).map((k) => ({ text: k.text, team: k.team })),
-      message: this.messageT > 0 ? this.message : "", winner: this.winner, carrying: p.carrying, hurt: this.hurtFlash > 0,
+      message: this.messageT > 0 ? this.message : "", winner: this.winner, carrying: p.carrying, hurt: this.hurtFlash > 0, hurtDirection: this.hurtDirection,
       healing: p.healTarget?.name ?? null, slots: p.weapons.map((x) => x.def.name), slot: p.slot, locked: this.locked,
       kills: p.kills, deaths: p.deaths, pending: p.pendingCls,
     };

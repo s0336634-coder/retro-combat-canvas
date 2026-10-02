@@ -10,3 +10,4 @@
 <!-- LOVABLE:END -->
 
 - Build low-poly weapons from shared Three.js primitives in `Game.makeWeaponModel` so first-person and bot silhouettes stay consistent.
+- Store NPC limb pivots in actor mesh userData so movement animation stays lightweight and class-independent.
