@@ -22,6 +22,7 @@ function Index() {
   const game = useRef<any>(null);
   const [cls, setCls] = useState<ClassId | null>(null);
   const [hud, setHud] = useState<any>(null);
+  const flagText = (flag: any) => flag.state === "AT_BASE" ? "SECURE" : flag.state === "DROPPED" ? `DROPPED ${flag.returnT}s` : `TAKEN · ${flag.carrier}`;
 
   useEffect(() => {
     if (!cls || game.current) return;
@@ -57,9 +58,14 @@ function Index() {
       )}
       {hud && (
         <>
-          <div className="pointer-events-none absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground" />
+          <div className="pointer-events-none absolute left-1/2 top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2" aria-label="Crosshair">
+            <span className="absolute left-0 top-1/2 h-0.5 w-2 -translate-y-1/2 bg-foreground shadow-sm" /><span className="absolute right-0 top-1/2 h-0.5 w-2 -translate-y-1/2 bg-foreground shadow-sm" />
+            <span className="absolute left-1/2 top-0 h-2 w-0.5 -translate-x-1/2 bg-foreground shadow-sm" /><span className="absolute bottom-0 left-1/2 h-2 w-0.5 -translate-x-1/2 bg-foreground shadow-sm" />
+          </div>
+          {hud.hurt && <div className="pointer-events-none absolute left-1/2 top-1/2 h-24 w-1 -translate-x-1/2 -translate-y-1/2 origin-center bg-destructive" style={{ transform: `translate(-50%, -50%) rotate(${hud.hurtDirection}rad) translateY(-54px)` }} aria-label="Damage direction" />}
           <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded bg-card/80 px-4 py-1 font-bold">
             BLU {hud.scores[0]} — {hud.scores[1]} RED
+            <div className="mt-1 flex gap-3 text-[10px] font-normal"><span>BLU INTEL: {flagText(hud.flags[0])}</span><span>RED INTEL: {flagText(hud.flags[1])}</span></div>
           </div>
           <div className="pointer-events-none absolute left-3 top-3 space-y-1 text-sm">
             {hud.killfeed.map((k: any, i: number) => <div key={i} className="rounded bg-card/80 px-2">{k.text}</div>)}
