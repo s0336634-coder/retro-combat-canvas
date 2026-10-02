@@ -6,4 +6,4 @@
 - [x] Add three quality-of-life HUD improvements.
 - [x] Upgrade low-poly NPC class models.
 - [x] Add firing and unique melee weapon animations.
-- [ ] Verify build and live gameplay rendering.
+- [x] Verify build and live gameplay rendering.
