@@ -10,4 +10,4 @@
 - [x] Improve bot floor-aware navigation and moving-target pursuit.
 - [x] Make bots reliably pick up, escort, defend, and capture intelligence.
 - [x] Enrich bridge, moat, battlements, courtyard, sewers, and intel vaults.
-- [ ] Verify updated NPC objective play and map rendering.
+- [x] Verify updated NPC objective play and map rendering.
