@@ -74,6 +74,7 @@ export class Game {
   private viewmodel: THREE.Group;
   private viewmodelKey = "";
   private idc = 1;
+  private hitT = 0;
   private minimap: HTMLCanvasElement | null;
   private matCache = new Map<number, THREE.MeshLambertMaterial>();
   private disposers: (() => void)[] = [];
@@ -823,6 +824,7 @@ export class Game {
     if (from && from !== t && from.team === t.team) return;
     t.hp -= amount;
     if (from && from !== t) {
+      if (from === this.player) this.hitT = 0.15;
       t.lastAttacker = from;
       if (t.brain) t.brain.hurtBy(from, this);
       if (t.cls === "spy" && t.disguised && Math.random() < 0.3) { t.disguised = false; this.refreshLook(t); }
@@ -1082,6 +1084,7 @@ export class Game {
     }
     this.fx = this.fx.filter((f) => f.t < f.life);
     if (this.hurtFlash > 0) this.hurtFlash -= dt;
+    if (this.hitT > 0) this.hitT -= dt;
   }
 
   updateVisuals(dt: number) {
@@ -1201,6 +1204,7 @@ export class Game {
       message: this.messageT > 0 ? this.message : "", winner: this.winner, carrying: p.carrying, hurt: this.hurtFlash > 0, hurtDirection: this.hurtDirection,
       healing: p.healTarget?.name ?? null, slots: p.weapons.map((x) => x.def.name), slot: p.slot, locked: this.locked,
       kills: p.kills, deaths: p.deaths, pending: p.pendingCls,
+      hit: this.hitT > 0,
     };
   }
 }
