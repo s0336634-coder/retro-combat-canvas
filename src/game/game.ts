@@ -74,6 +74,7 @@ export class Game {
   private viewmodel: THREE.Group;
   private viewmodelKey = "";
   private idc = 1;
+  private hitT = 0;
   private minimap: HTMLCanvasElement | null;
   private matCache = new Map<number, THREE.MeshLambertMaterial>();
   private disposers: (() => void)[] = [];
@@ -823,6 +824,7 @@ export class Game {
     if (from && from !== t && from.team === t.team) return;
     t.hp -= amount;
     if (from && from !== t) {
+      if (from === this.player) this.hitT = 0.15;
       t.lastAttacker = from;
       if (t.brain) t.brain.hurtBy(from, this);
       if (t.cls === "spy" && t.disguised && Math.random() < 0.3) { t.disguised = false; this.refreshLook(t); }
@@ -909,6 +911,7 @@ export class Game {
     }
   }
   damageBuilding(b: Building, dmg: number, from: Actor | null) {
+    if (from === this.player) this.hitT = 0.15;
     b.hp -= dmg;
     if (b.hp <= 0) this.destroyBuilding(b, from);
   }
@@ -1082,6 +1085,7 @@ export class Game {
     }
     this.fx = this.fx.filter((f) => f.t < f.life);
     if (this.hurtFlash > 0) this.hurtFlash -= dt;
+    if (this.hitT > 0) this.hitT -= dt;
   }
 
   updateVisuals(dt: number) {
@@ -1193,7 +1197,7 @@ export class Game {
     const p = this.player, w = p.weapons[p.slot];
     return {
       hp: Math.ceil(p.hp), maxHp: p.maxHp, alive: p.alive, respawnIn: Math.ceil(p.respawnT), cls: p.cls, team: p.team,
-      weapon: w?.def.name ?? "", clip: w?.clip ?? 0, reserve: w?.reserve ?? 0, kind: w?.def.kind ?? "", reloading: p.reloadT > 0,
+      weapon: w?.def.name ?? "", clip: w?.clip ?? 0, reserve: w?.reserve ?? 0, kind: w?.def.kind ?? "", reloading: p.reloadT > 0, maxClip: w?.def.clip ?? 0,
       uber: p.uber, uberActive: p.uberT > 0, metal: p.metal, cloak: p.cloak, cloaked: p.cloaked, disguised: p.disguised,
       scoped: p.scoped, charge: p.charge, air: p.air, burning: p.burnT > 0, buildMode: p.buildMode, ghostValid: this.ghostValid,
       scores: [...this.scores], flags: this.flags.map((f) => ({ team: f.team, state: f.state, returnT: Math.ceil(f.returnT), carrier: f.carrier?.name ?? null })),
@@ -1201,6 +1205,7 @@ export class Game {
       message: this.messageT > 0 ? this.message : "", winner: this.winner, carrying: p.carrying, hurt: this.hurtFlash > 0, hurtDirection: this.hurtDirection,
       healing: p.healTarget?.name ?? null, slots: p.weapons.map((x) => x.def.name), slot: p.slot, locked: this.locked,
       kills: p.kills, deaths: p.deaths, pending: p.pendingCls,
+      hit: this.hitT > 0,
     };
   }
 }
