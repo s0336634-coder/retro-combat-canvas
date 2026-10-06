@@ -57,6 +57,10 @@ export function buildMap() {
     add(px - 0.3, px + 0.3, 0, 4.5, -3.3, -2.9, 0x6e5234);
     add(px - 0.3, px + 0.3, 0, 4.5, 2.9, 3.3, 0x6e5234);
   }
+  // Offset cargo breaks the bridge sightline while leaving the center node clear.
+  add(-1.1, 1.1, 0, 1.25, 1.5, 2.8, 0x9c7b4b);
+  add(-18, -16.5, -6, -4.7, -18, -16.5, 0x55504a);
+  add(15.5, 17.2, -6, -4.5, 16, 17.8, 0x55504a);
 
   // ---------- bases (mirrored) ----------
   const spawns: { x: number; y: number; z: number }[][] = [[], []];
@@ -82,6 +86,10 @@ export function buildMap() {
     // battlements (2nd floor)
     A(41, 50, 5.6, 6, -19, 19, 0x7b6a55);
     A(49.7, 50, 6, 7, -13, 13, trim); // railing
+    // low battlement cover and sandbag-like blocks
+    A(42, 43.5, 6, 7.2, 8, 9.5, 0x9c7b4b);
+    A(42, 43.5, 6, 7.2, -9.5, -8, 0x9c7b4b);
+    A(46, 47.6, 6, 6.75, -2.8, -1.7, 0x77705f);
     // two staircases to battlements (straight stairs + "spiral" side)
     for (let i = 1; i <= 10; i++) {
       A(60 - i, 61 - i, 0, 0.6 * i, 14, 18, 0x9a8a70);
@@ -98,8 +106,19 @@ export function buildMap() {
     A(30, 32, 0, 1.6, -12, -10, 0x9c7b4b);
     A(26, 27.5, 0, 1.2, -20, -18.5, 0x9c7b4b);
     A(45, 47, 0, 1.4, -10, -8, 0x9c7b4b);
+    // courtyard loading clutter, tucked away from the main route nodes
+    A(34, 36.5, 0, 1.1, -18, -16.8, 0x77705f);
+    A(35, 36.2, 1.1, 2, -18, -16.8, 0x9c7b4b);
+    A(52, 53, 0, 2.4, 17.2, 18.5, 0x4a4a45);
     // intel pedestal area
     A(74, 76, -6, -5.6, -1, 1, 0x333333);
+    // vault equipment racks and consoles against the back wall
+    A(78, 79, -6, -2, -7, -3, 0x353a3d);
+    A(78, 79, -6, -2, 3, 7, 0x353a3d);
+    A(76.8, 78, -6, -5, 8.5, 10.5, trim);
+    // overhead sewer utility pipes add landmarks without blocking movement
+    A(30, 62, -1, -0.45, 23.35, 23.8, 0x45484a);
+    A(68.2, 71.5, -1, -0.45, 13, 22, 0x45484a);
     intelHome.push({ x: s * 75, y: -5.6, z: 0 });
     // resupply cabinet
     A(78, 79, 0, 2.5, 16, 19, 0xd8c070);

@@ -985,7 +985,7 @@ export class Game {
         f.pos.set(c.pos.x + Math.sin(c.yaw) * 0.4, c.pos.y + 1.1, c.pos.z + Math.cos(c.yaw) * 0.4);
         // capture?
         const own = this.flags[c.team];
-        if (own.state === "AT_BASE" && c.pos.distanceTo(own.home) < 2.2) {
+        if (own.state === "AT_BASE" && c.pos.distanceTo(own.home) < 3.5) {
           this.scores[c.team]++;
           this.feed(`${c.name} captured the ${TEAM_NAME[f.team]} intel!`, c.team);
           this.flash(`${TEAM_NAME[c.team]} team captured the intelligence!`);
@@ -1000,7 +1000,7 @@ export class Game {
       }
       for (const a of this.actors) {
         if (!a.alive || this.winner !== null) continue;
-        if (Math.hypot(a.pos.x - f.pos.x, a.pos.z - f.pos.z) > 1.1 || Math.abs(a.pos.y - f.pos.y) > 2) continue;
+        if (Math.hypot(a.pos.x - f.pos.x, a.pos.z - f.pos.z) > 2 || Math.abs(a.pos.y - f.pos.y) > 2) continue;
         if (a.team === enemy && !this.isInvuln(a)) {
           f.state = "CARRIED"; f.carrier = a; a.carrying = true;
           if (a.cloaked || a.disguised) { a.cloaked = false; a.disguised = false; this.refreshLook(a); }
