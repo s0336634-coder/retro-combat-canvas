@@ -64,7 +64,9 @@ export function astar(g: Game, a: Actor, start: number, goal: number): number[] 
 export function nearestNode(g: Game, p: THREE.Vector3, needLos = true) {
   let best = -1, bd = Infinity;
   for (const n of g.map.nodes) {
-    const d = Math.hypot(n.x - p.x, (n.y - p.y) * 3, n.z - p.z);
+    // Strong floor weighting prevents courtyard bots from selecting sewer nodes
+    // that happen to be directly beneath them.
+    const d = Math.hypot(n.x - p.x, (n.y - p.y) * 10, n.z - p.z);
     if (d < bd && (!needLos || d > 40 || g.los(new THREE.Vector3(p.x, p.y + 1, p.z), new THREE.Vector3(n.x, n.y + 1, n.z)))) { bd = d; best = n.id; }
   }
   if (best < 0) return nearestNode(g, p, false);
@@ -78,7 +80,7 @@ function goTo(g: Game, a: Actor, nodeName: string | number, pos?: THREE.Vector3)
   if (b.goal !== id || b.repathT <= 0 || !b.path.length) {
     b.goal = id;
     b.path = astar(g, a, nearestNode(g, a.pos), id);
-    b.repathT = 3;
+    b.repathT = pos ? 0.75 : 3;
   }
   b.goalPos = pos ?? null;
 }
@@ -163,7 +165,8 @@ export function botThink(a: Actor, g: Game, dt: number) {
       break;
     }
     case "PURSUE_OBJECTIVE": {
-      if (a.carrying) goTo(g, a, tn(a, "INTEL_VAULT"), own.home);
+      if (a.carrying && own.state === "AT_BASE") goTo(g, a, tn(a, "INTEL_VAULT"), own.home);
+      else if (a.carrying) goTo(g, a, tn(a, "HALL")); // hold safely until our intel is returned
       else if (own.state !== "AT_BASE" && own.carrier) { goTo(g, a, nearestNode(g, own.carrier.pos, false), own.carrier.pos); }
       else if (own.state === "DROPPED") goTo(g, a, nearestNode(g, own.pos, false), own.pos);
       else if (enemyFlag.state === "CARRIED" && enemyFlag.carrier) goTo(g, a, nearestNode(g, enemyFlag.carrier.pos, false), enemyFlag.carrier.pos.clone().add(new THREE.Vector3(2, 0, 2)));
@@ -214,7 +217,8 @@ export function botThink(a: Actor, g: Game, dt: number) {
   if (moveTo) {
     const d = new THREE.Vector3(moveTo.x - a.pos.x, 0, moveTo.z - a.pos.z);
     const L = d.length();
-    if (L > 0.3) { d.divideScalar(L); inp.wx = d.x; inp.wz = d.z; } else { inp.wx = inp.wz = 0; }
+    const stopRadius = b.state === "PURSUE_OBJECTIVE" ? 0.1 : 0.3;
+    if (L > stopRadius) { d.divideScalar(L); inp.wx = d.x; inp.wz = d.z; } else { inp.wx = inp.wz = 0; }
     if (!look) look = new THREE.Vector3(moveTo.x, a.pos.y + a.h - 0.2 + (moveTo.y - a.pos.y) * 0.3, moveTo.z);
     if (a.inWater) inp.jump = moveTo.y > a.pos.y + 0.5 || a.pos.y + a.h < -2.2;
   } else if (b.state !== "ENGAGE_ENEMY") { inp.wx = inp.wz = 0; }
@@ -231,7 +235,7 @@ export function botThink(a: Actor, g: Game, dt: number) {
 
 function chooseState(g: Game, a: Actor): import("./ai").BotState {
   const b = a.brain!;
-  const own = g.flags[a.team];
+  const own = g.flags[a.team], enemyFlag = g.flags[1 - a.team];
   const u: Record<string, number> = { PATROL: 10, PURSUE_OBJECTIVE: 0, ENGAGE_ENEMY: 0, RETREAT_FOR_HEALTH: 0, DEFEND_CHOKE: 0, BUILD_NEST: 0 };
   const role = a.cls;
   if (["scout", "soldier", "spy", "pyro"].includes(role)) u.PURSUE_OBJECTIVE = 40;
@@ -240,6 +244,10 @@ function chooseState(g: Game, a: Actor): import("./ai").BotState {
   if (role === "heavy" && g.actors.some((m) => m.alive && m.healTarget === a)) u.PURSUE_OBJECTIVE = 60; // pocketed heavy pushes
   if (role === "engineer") u.BUILD_NEST = 45;
   if (a.carrying) u.PURSUE_OBJECTIVE = 150;
+  if (enemyFlag.state === "CARRIED" && enemyFlag.carrier?.team === a.team) {
+    // Push with the carrier instead of leaving them to cross the map alone.
+    u.PURSUE_OBJECTIVE = Math.max(u.PURSUE_OBJECTIVE, role === "engineer" || role === "sniper" ? 35 : 85);
+  }
   if (own.state !== "AT_BASE") u.PURSUE_OBJECTIVE = Math.max(u.PURSUE_OBJECTIVE, role === "sniper" || role === "engineer" ? 30 : 90);
   if (b.target) u.ENGAGE_ENEMY = 70 + (b.target.carrying ? 100 : 0) - (a.carrying ? 90 : 0);
   if (a.cls === "spy" && b.target && a.cloaked && !b.target.carrying) u.ENGAGE_ENEMY = 30;
