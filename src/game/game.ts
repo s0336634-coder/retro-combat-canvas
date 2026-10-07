@@ -933,9 +933,17 @@ export class Game {
     if (b.sappedBy) { b.sappedBy = null; return; }
     if (b.hp < b.maxHp && a.metal > 0) { const use = Math.min(20, a.metal, Math.ceil((b.maxHp - b.hp) / 5)); b.hp = Math.min(b.maxHp, b.hp + use * 5); a.metal -= use; return; }
     if (b.buildT > 0) { b.buildT = Math.max(0, b.buildT - 0.8); return; }
-    if (b.level < 3 && a.metal > 0 && b.type === "sentry") {
+    if (b.level < 3 && a.metal > 0 && (b.type === "sentry" || b.type === "dispenser")) {
       const use = Math.min(25, a.metal); b.upgrade += use; a.metal -= use;
-      if (b.upgrade >= 200) { b.upgrade = 0; b.level++; b.maxHp = b.level === 2 ? 180 : 216; b.hp = b.maxHp; b.mesh.scale.setScalar(1 + (b.level - 1) * 0.15); const pods = b.mesh.getObjectByName("rocket-pods"); if (pods) pods.visible = b.level === 3; this.feed(`${a.name} upgraded sentry to level ${b.level}`, a.team); }
+      if (b.upgrade >= 200) {
+        b.upgrade = 0; b.level++; b.maxHp = b.level === 2 ? 180 : 216; b.hp = b.maxHp;
+        b.mesh.scale.setScalar(1 + (b.level - 1) * (b.type === "sentry" ? 0.15 : 0.08));
+        const show = (n: string, v: boolean) => { const o = b.mesh.getObjectByName(n); if (o) o.visible = v; };
+        show("rocket-pods", b.level === 3); show("sentry-l2", b.level >= 2);
+        show("disp-l2", b.level >= 2); show("disp-l3", b.level >= 3);
+        this.burst(b.pos.clone().add(new THREE.Vector3(0, 1, 0)), 0xffdd55, 1);
+        this.feed(`${a.name} upgraded ${b.type} to level ${b.level}`, a.team);
+      }
     }
   }
   damageBuilding(b: Building, dmg: number, from: Actor | null) {
@@ -981,14 +989,18 @@ export class Game {
         } else b.yaw += dt * 0.6;
         if (b.head) b.head.rotation.y = b.yaw - b.mesh.rotation.y;
       } else if (b.type === "dispenser") {
+        const ring = b.mesh.getObjectByName("disp-ring");
+        const radius = 3.5 + b.level * 0.75;
+        if (ring) { ring.scale.setScalar(radius / b.mesh.scale.x); ring.rotation.z += dt; }
         b.tickT -= dt;
         if (b.tickT <= 0) {
           b.tickT = 1;
+          const heal = [0, 12, 18, 26][b.level], ammoF = [0, 0.1, 0.15, 0.2][b.level];
           for (const o of this.actors) {
-            if (!o.alive || o.team !== b.team || o.pos.distanceTo(b.pos) > 4) continue;
-            o.hp = Math.min(Math.max(o.hp, o.maxHp), o.hp + 12);
-            for (const w of o.weapons) w.reserve = Math.min(w.def.reserve, w.reserve + Math.ceil(w.def.reserve * 0.1)), w.clip = w.def.reserve === 0 ? Math.min(w.def.clip, w.clip + Math.ceil(w.def.clip * 0.1)) : w.clip;
-            if (o.cls === "engineer") o.metal = Math.min(200, o.metal + 20);
+            if (!o.alive || o.team !== b.team || o.pos.distanceTo(b.pos) > radius) continue;
+            o.hp = Math.min(Math.max(o.hp, o.maxHp), o.hp + heal);
+            for (const w of o.weapons) w.reserve = Math.min(w.def.reserve, w.reserve + Math.ceil(w.def.reserve * ammoF)), w.clip = w.def.reserve === 0 ? Math.min(w.def.clip, w.clip + Math.ceil(w.def.clip * ammoF)) : w.clip;
+            if (o.cls === "engineer") o.metal = Math.min(200, o.metal + 10 + b.level * 10);
           }
         }
       } else if (b.type === "tele_in") {
