@@ -218,7 +218,17 @@ export function botThink(a: Actor, g: Game, dt: number) {
     const d = new THREE.Vector3(moveTo.x - a.pos.x, 0, moveTo.z - a.pos.z);
     const L = d.length();
     const stopRadius = b.state === "PURSUE_OBJECTIVE" ? 0.1 : 0.3;
-    if (L > stopRadius) { d.divideScalar(L); inp.wx = d.x; inp.wz = d.z; } else { inp.wx = inp.wz = 0; }
+    if (L > stopRadius) {
+      d.divideScalar(L);
+      // separate from teammates so bots don't jam in doorways / spawn
+      for (const o of g.actors) {
+        if (o === a || !o.alive || o.team !== a.team) continue;
+        const ox = a.pos.x - o.pos.x, oz = a.pos.z - o.pos.z, od = Math.hypot(ox, oz);
+        if (od > 0.01 && od < 1.3 && Math.abs(o.pos.y - a.pos.y) < 1.5) { const k = (1.3 - od) / od * 0.8; d.x += ox * k; d.z += oz * k; }
+      }
+      const n = Math.hypot(d.x, d.z) || 1;
+      inp.wx = d.x / n; inp.wz = d.z / n;
+    } else { inp.wx = inp.wz = 0; }
     if (!look) look = new THREE.Vector3(moveTo.x, a.pos.y + a.h - 0.2 + (moveTo.y - a.pos.y) * 0.3, moveTo.z);
     if (a.inWater) inp.jump = moveTo.y > a.pos.y + 0.5 || a.pos.y + a.h < -2.2;
   } else if (b.state !== "ENGAGE_ENEMY") { inp.wx = inp.wz = 0; }
@@ -457,8 +467,9 @@ function engineerLogic(g: Game, a: Actor, dt: number): THREE.Vector3 | null {
   // maintain: whack the most damaged / un-upgraded building
   const blds = g.buildings.filter((x) => x.owner === a && x.type !== "tele_in" && x.type !== "tele_out");
   let job = blds.find((x) => x.sappedBy) ?? blds.sort((p, q) => p.hp / p.maxHp - q.hp / q.maxHp)[0];
-  const s = mine("sentry");
+  const s = mine("sentry"), dsp = mine("dispenser");
   if (job && job.hp >= job.maxHp && s && s.level < 3 && a.metal > 0) job = s;
+  else if (job && job.hp >= job.maxHp && dsp && dsp.level < 3 && a.metal > 0) job = dsp;
   if (!job) return null;
   if (a.metal <= 0 && !mine("dispenser")) { goTo(g, a, tn(a, "SPAWN")); return followPath(g, a); }
   inp.slot = 2;

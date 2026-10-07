@@ -272,8 +272,18 @@ export class Game {
     if (a.pendingCls && a.pendingCls !== a.cls) this.changeClassNow(a, a.pendingCls);
     a.pendingCls = null;
     const c = CLASSES[a.cls];
+    // pick a free, spread-out spot in the spawn room so bots don't stack and jam
+    const sx = this.map.spawns[a.team][0].x > 0 ? 1 : -1;
+    let bestP = null, bestScore = -Infinity;
+    for (let i = 0; i < 24; i++) {
+      const x = sx * (70.5 + Math.random() * 6.5), z = 11.5 + Math.random() * 4.5;
+      if (this.world.overlaps(x, 0.05, z, 1.8, 0.5)) continue;
+      let near = 99;
+      for (const o of this.actors) if (o !== a && o.alive) near = Math.min(near, Math.hypot(o.pos.x - x, o.pos.z - z));
+      if (near > bestScore) { bestScore = near; bestP = { x, z }; }
+    }
     const sp = this.map.spawns[a.team][Math.floor(Math.random() * this.map.spawns[a.team].length)];
-    a.pos.set(sp.x + (Math.random() - 0.5), sp.y, sp.z + (Math.random() - 0.5));
+    if (bestP) a.pos.set(bestP.x, 0, bestP.z); else a.pos.set(sp.x, sp.y, sp.z);
     a.vel.set(0, 0, 0);
     a.yaw = a.team === 0 ? -Math.PI / 2 : Math.PI / 2; // face enemy side
     a.pitch = 0;
@@ -888,8 +898,26 @@ export class Game {
       for (const x of [-0.38, 0.38]) { const pod = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.28, 0.45), new THREE.MeshLambertMaterial({ color: 0x444444 })); pod.position.set(x, 0.05, -0.08); pods.add(pod); for (const y of [-0.07, 0.07]) { const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.32, 8), new THREE.MeshLambertMaterial({ color: 0x252525 })); tube.rotation.x = Math.PI / 2; tube.position.set(x, y + 0.05, -0.38); pods.add(tube); } }
       hg.add(pods);
       g.add(hg); head = hg;
+      const l2 = new THREE.Group(); l2.name = "sentry-l2"; l2.visible = false;
+      const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.7), new THREE.MeshLambertMaterial({ color: 0x222222 }));
+      b2.position.set(0.14, 0, -0.5); barrel.position.x = -0.14; l2.add(b2);
+      const ammo = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.25, 0.3), new THREE.MeshLambertMaterial({ color: 0x6b5a2a })); ammo.position.set(0, 0, 0.35); l2.add(ammo);
+      hg.add(l2);
     } else if (type === "dispenser") {
       m(0.8, 1.3, 0.8, col, 0.65); m(0.5, 0.3, 0.05, 0xffffcc, 0.9).position.z = -0.42;
+      m(0.86, 0.08, 0.86, 0x333333, 1.32); // lid
+      for (const x of [-0.2, 0.2]) m(0.12, 0.35, 0.12, 0x888888, 0.18).position.set(x, 0.18, -0.42); // ammo slots
+      const mk = (name: string, color: number, y: number) => {
+        const grp = new THREE.Group(); grp.name = name; grp.visible = false;
+        const band = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.1, 0.84), new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: 0.4 }));
+        band.position.y = y; grp.add(band);
+        const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.5, 6), new THREE.MeshLambertMaterial({ color: 0x999999 }));
+        ant.position.set(name === "disp-l2" ? 0.28 : -0.28, 1.6, 0.28); grp.add(ant);
+        g.add(grp);
+      };
+      mk("disp-l2", 0xd8c070, 0.4); mk("disp-l3", 0x66ffaa, 1.1);
+      const glow = new THREE.Mesh(new THREE.TorusGeometry(1, 0.03, 4, 32), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.35 }));
+      glow.name = "disp-ring"; glow.rotation.x = Math.PI / 2; glow.position.y = 0.05; g.add(glow);
     } else {
       const c = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.25, 12), new THREE.MeshLambertMaterial({ color: type === "tele_in" ? col : 0xeeeeee, emissive: col, emissiveIntensity: 0.3 }));
       c.position.y = 0.12; g.add(c);
@@ -905,9 +933,17 @@ export class Game {
     if (b.sappedBy) { b.sappedBy = null; return; }
     if (b.hp < b.maxHp && a.metal > 0) { const use = Math.min(20, a.metal, Math.ceil((b.maxHp - b.hp) / 5)); b.hp = Math.min(b.maxHp, b.hp + use * 5); a.metal -= use; return; }
     if (b.buildT > 0) { b.buildT = Math.max(0, b.buildT - 0.8); return; }
-    if (b.level < 3 && a.metal > 0 && b.type === "sentry") {
+    if (b.level < 3 && a.metal > 0 && (b.type === "sentry" || b.type === "dispenser")) {
       const use = Math.min(25, a.metal); b.upgrade += use; a.metal -= use;
-      if (b.upgrade >= 200) { b.upgrade = 0; b.level++; b.maxHp = b.level === 2 ? 180 : 216; b.hp = b.maxHp; b.mesh.scale.setScalar(1 + (b.level - 1) * 0.15); const pods = b.mesh.getObjectByName("rocket-pods"); if (pods) pods.visible = b.level === 3; this.feed(`${a.name} upgraded sentry to level ${b.level}`, a.team); }
+      if (b.upgrade >= 200) {
+        b.upgrade = 0; b.level++; b.maxHp = b.level === 2 ? 180 : 216; b.hp = b.maxHp;
+        b.mesh.scale.setScalar(1 + (b.level - 1) * (b.type === "sentry" ? 0.15 : 0.08));
+        const show = (n: string, v: boolean) => { const o = b.mesh.getObjectByName(n); if (o) o.visible = v; };
+        show("rocket-pods", b.level === 3); show("sentry-l2", b.level >= 2);
+        show("disp-l2", b.level >= 2); show("disp-l3", b.level >= 3);
+        this.burst(b.pos.clone().add(new THREE.Vector3(0, 1, 0)), 0xffdd55, 1);
+        this.feed(`${a.name} upgraded ${b.type} to level ${b.level}`, a.team);
+      }
     }
   }
   damageBuilding(b: Building, dmg: number, from: Actor | null) {
@@ -953,14 +989,18 @@ export class Game {
         } else b.yaw += dt * 0.6;
         if (b.head) b.head.rotation.y = b.yaw - b.mesh.rotation.y;
       } else if (b.type === "dispenser") {
+        const ring = b.mesh.getObjectByName("disp-ring");
+        const radius = 3.5 + b.level * 0.75;
+        if (ring) { ring.scale.setScalar(radius / b.mesh.scale.x); ring.rotation.z += dt; }
         b.tickT -= dt;
         if (b.tickT <= 0) {
           b.tickT = 1;
+          const heal = [0, 12, 18, 26][b.level], ammoF = [0, 0.1, 0.15, 0.2][b.level];
           for (const o of this.actors) {
-            if (!o.alive || o.team !== b.team || o.pos.distanceTo(b.pos) > 4) continue;
-            o.hp = Math.min(Math.max(o.hp, o.maxHp), o.hp + 12);
-            for (const w of o.weapons) w.reserve = Math.min(w.def.reserve, w.reserve + Math.ceil(w.def.reserve * 0.1)), w.clip = w.def.reserve === 0 ? Math.min(w.def.clip, w.clip + Math.ceil(w.def.clip * 0.1)) : w.clip;
-            if (o.cls === "engineer") o.metal = Math.min(200, o.metal + 20);
+            if (!o.alive || o.team !== b.team || o.pos.distanceTo(b.pos) > radius) continue;
+            o.hp = Math.min(Math.max(o.hp, o.maxHp), o.hp + heal);
+            for (const w of o.weapons) w.reserve = Math.min(w.def.reserve, w.reserve + Math.ceil(w.def.reserve * ammoF)), w.clip = w.def.reserve === 0 ? Math.min(w.def.clip, w.clip + Math.ceil(w.def.clip * ammoF)) : w.clip;
+            if (o.cls === "engineer") o.metal = Math.min(200, o.metal + 10 + b.level * 10);
           }
         }
       } else if (b.type === "tele_in") {
