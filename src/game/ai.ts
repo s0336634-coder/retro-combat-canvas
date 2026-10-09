@@ -232,14 +232,24 @@ export function botThink(a: Actor, g: Game, dt: number) {
     if (!look) look = new THREE.Vector3(moveTo.x, a.pos.y + a.h - 0.2 + (moveTo.y - a.pos.y) * 0.3, moveTo.z);
     if (a.inWater) inp.jump = moveTo.y > a.pos.y + 0.5 || a.pos.y + a.h < -2.2;
   } else if (b.state !== "ENGAGE_ENEMY") { inp.wx = inp.wz = 0; }
-  // stuck detection
+  // stuck detection with a timed sidestep so bots slide around corners instead of jittering
+  b.unstuckT = (b.unstuckT ?? 0) - dt;
+  if (b.unstuckT > 0 && Math.hypot(inp.wx, inp.wz) > 0.1) {
+    const s = b.unstuckSide ?? 1, wx = inp.wx;
+    inp.wx = -inp.wz * s * 0.9 + wx * 0.3; inp.wz = wx * s * 0.9 + inp.wz * 0.3;
+  }
   if (Math.hypot(inp.wx, inp.wz) > 0.1) {
     b.stuckT += dt;
-    if (b.stuckT > 0.8) {
-      if (a.pos.distanceTo(b.lastPos) < 0.8) { inp.jump = true; if (b.stuckT > 2.5) { b.repathT = 0; b.path = []; b.stuckT = 0; inp.wx = -inp.wz; } }
-      else { b.stuckT = 0; b.lastPos.copy(a.pos); }
+    if (b.stuckT > 0.7) {
+      if (a.pos.distanceTo(b.lastPos) < 0.6) {
+        if (a.onGround) inp.jump = true;
+        b.unstuckT = 0.6; b.unstuckSide = Math.random() < 0.5 ? -1 : 1;
+        if (b.stuckT > 2.2) { b.repathT = 0; b.path = []; b.stuckT = 0; b.lastPos.copy(a.pos); if (b.state === "PATROL") b.goal = -1; }
+      } else { b.stuckT = 0; b.lastPos.copy(a.pos); }
     }
-  }
+  } else { b.stuckT = 0; b.lastPos.copy(a.pos); }
+  // reload during downtime
+  if (!b.target && b.state !== "ENGAGE_ENEMY" && Math.random() < 0.02) inp.reload = true;
   if (look) aimAt(g, a, look, dt);
 }
 
@@ -265,6 +275,8 @@ function chooseState(g: Game, a: Actor): import("./ai").BotState {
   if (b.targetBld && ["soldier", "demoman"].includes(a.cls)) u.ENGAGE_ENEMY = Math.max(u.ENGAGE_ENEMY, 60);
   const healed = g.actors.some((m) => m.alive && m.healTarget === a);
   if (a.hp < a.maxHp * 0.3 && !healed) u.RETREAT_FOR_HEALTH = a.carrying ? 60 : 95;
+  // hysteresis: keep the current plan unless another clearly wins, stops state flicker
+  if (b.state in u && b.state !== "IDLE") u[b.state] += 8;
   let best = "PATROL", bv = -1;
   for (const k in u) if (u[k] > bv) { bv = u[k]; best = k; }
   return best as BotState;
