@@ -269,7 +269,6 @@ export class Game {
   }
 
   respawn(a: Actor) {
-    if (typeof window !== "undefined") (window as any).__game = this;
     if (a.pendingCls && a.pendingCls !== a.cls) this.changeClassNow(a, a.pendingCls);
     a.pendingCls = null;
     const c = CLASSES[a.cls];
