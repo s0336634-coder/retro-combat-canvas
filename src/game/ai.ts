@@ -80,7 +80,13 @@ function goTo(g: Game, a: Actor, nodeName: string | number, pos?: THREE.Vector3)
   if (b.goal !== id || b.repathT <= 0 || !b.path.length) {
     b.goal = id;
     b.path = astar(g, a, nearestNode(g, a.pos), id);
-    b.repathT = pos ? 0.75 : 3;
+    // Skip the start node when we're already past it toward the next one, so repaths don't drag bots backwards.
+    if (b.path.length > 1) {
+      const n0 = g.map.nodes[b.path[0]], n1 = g.map.nodes[b.path[1]];
+      const dSelf = Math.hypot(n1.x - a.pos.x, n1.z - a.pos.z), dSeg = Math.hypot(n1.x - n0.x, n1.z - n0.z);
+      if (dSelf < dSeg && Math.abs(n1.y - a.pos.y) < 2.5) b.path.shift();
+    }
+    b.repathT = pos ? 1.5 : 3;
   }
   b.goalPos = pos ?? null;
 }
