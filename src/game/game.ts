@@ -20,7 +20,7 @@ export type Actor = {
   burnT: number; burnBy: Actor | null; burnTick: number; uber: number; uberT: number; invulnT: number;
   metal: number; cloaked: boolean; cloak: number; disguised: boolean; revT: number; scoped: boolean; charge: number;
   healTarget: Actor | null; air: number; drownTick: number; input: Input; mesh: THREE.Group; bodyMat: THREE.MeshLambertMaterial;
-  mats: THREE.MeshLambertMaterial[]; gunMesh: THREE.Group; brain: Brain | null; kills: number; deaths: number;
+  mats: THREE.MeshLambertMaterial[]; gunMesh: THREE.Group; brain: Brain | null; kills: number; deaths: number; streak: number;
   carrying: boolean; buildMode: BldType | null; lastAttacker: Actor | null; airblastT: number; inWater: boolean; weaponAnim: number;
 };
 export type Building = {
@@ -258,7 +258,7 @@ export class Game {
       nextFire: 0, reloadT: 0, airJump: true, jumpHeld: false, altPrev: false, burnT: 0, burnBy: null, burnTick: 0,
       uber: 0, uberT: 0, invulnT: 0, metal: 200, cloaked: false, cloak: 1, disguised: false, revT: 0, scoped: false, charge: 0,
       healTarget: null, air: 12, drownTick: 0, input: { wx: 0, wz: 0, jump: false, crouch: false, fire: false, alt: false, yaw: 0, pitch: 0, slot: 0, reload: false },
-      mesh: m.g, bodyMat: m.bodyMat, mats: m.mats, gunMesh: m.gun, brain: null, kills: 0, deaths: 0, carrying: false,
+      mesh: m.g, bodyMat: m.bodyMat, mats: m.mats, gunMesh: m.gun, brain: null, kills: 0, deaths: 0, streak: 0, carrying: false,
       buildMode: null, lastAttacker: null, airblastT: 0, inWater: false, weaponAnim: 0,
     };
     if (isBot) a.brain = makeBrain(a);
@@ -858,7 +858,8 @@ export class Game {
     t.respawnT = RESPAWN;
     t.mesh.visible = false;
     t.scoped = false; t.cloaked = false; t.healTarget = null; t.carrying = false;
-    if (by) by.kills++;
+    t.streak = 0;
+    if (by) { by.kills++; by.streak++; if (by.streak === 3 || by.streak === 5 || by.streak === 10) this.feed(`${by.name} is on a ${by.streak} killstreak!`, by.team); }
     this.feed(by ? `${by.name}  [${weapon}]  ${t.name}` : `${t.name} died (${weapon})`, by ? by.team : t.team);
     for (const f of this.flags) if (f.carrier === t) { f.state = "DROPPED"; f.carrier = null; f.returnT = FLAG_RETURN; f.pos.copy(t.pos); this.feed(`${t.name} dropped the ${TEAM_NAME[f.team]} intel`, t.team); }
     this.addPickup("ammo_m", t.pos.clone(), 20);
@@ -1244,7 +1245,12 @@ export class Game {
       killfeed: this.killfeed.filter((k) => this.time - k.t < 8).map((k) => ({ text: k.text, team: k.team })),
       message: this.messageT > 0 ? this.message : "", winner: this.winner, carrying: p.carrying, hurt: this.hurtFlash > 0, hurtDirection: this.hurtDirection,
       healing: p.healTarget?.name ?? null, slots: p.weapons.map((x) => x.def.name), slot: p.slot, locked: this.locked,
-      kills: p.kills, deaths: p.deaths, pending: p.pendingCls,
+      kills: p.kills, deaths: p.deaths, pending: p.pendingCls, streak: p.streak,
+      time: Math.floor(this.time), killedBy: p.lastAttacker?.name ?? null,
+      objAngle: (() => { const t = p.carrying ? this.flags[p.team].home : this.flags[1 - p.team].pos; return Math.atan2(-(t.x - p.pos.x), -(t.z - p.pos.z)) - p.yaw; })(),
+      healHp: p.healTarget ? p.healTarget.hp / p.healTarget.maxHp : null,
+      aliveCounts: [this.actors.filter((a) => a.team === 0 && a.alive).length, this.actors.filter((a) => a.team === 1 && a.alive).length],
+      myBuildings: this.buildings.filter((b) => b.owner === p).map((b) => ({ type: b.type, level: b.level, hp: Math.ceil((b.hp / b.maxHp) * 100) })),
       hit: this.hitT > 0, showBoard: this.keys.has("Tab"),
       board: this.actors.map((a) => ({ name: a.name, team: a.team, cls: a.cls, kills: a.kills, deaths: a.deaths, alive: a.alive, me: a === p })).sort((a, b) => b.kills - a.kills),
     };

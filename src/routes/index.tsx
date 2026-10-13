@@ -75,19 +75,29 @@ function Index() {
             </div>
           </div>
 
+          {/* Objective arrow */}
+          {hud.alive && <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-primary/70" style={{ transform: `translate(-50%, -50%) rotate(${hud.objAngle}rad) translateY(-90px)` }}>▲</div>}
+
+          {/* Low HP vignette */}
+          {hud.alive && hud.hp < hud.maxHp * 0.3 && <div className="pointer-events-none absolute inset-0 animate-pulse shadow-[inset_0_0_140px_rgba(220,38,38,0.6)]" />}
+
           {/* Damage Direction */}
           {hud.hurt && <div className="pointer-events-none absolute left-1/2 top-1/2 h-24 w-1 -translate-x-1/2 -translate-y-1/2 origin-center bg-destructive shadow-lg" style={{ transform: `translate(-50%, -50%) rotate(${hud.hurtDirection}rad) translateY(-60px)` }} />}
 
           {/* Top Scoreboard */}
           <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 flex flex-col items-center gap-1 rounded-md bg-card/90 px-6 py-2 shadow-2xl border border-white/10">
             <div className="flex items-center gap-8 text-2xl font-black">
-              <span className="text-blue-500">BLU {hud.scores[0]}</span>
-              <span className="text-muted-foreground/50">—</span>
-              <span className="text-red-500">{hud.scores[1]} RED</span>
+              <span className="text-blue-500">BLU {hud.scores[0]} <span className="text-xs font-bold opacity-60">({hud.aliveCounts[0]} up)</span></span>
+              <span className="text-sm font-mono text-muted-foreground">{Math.floor(hud.time / 60)}:{String(hud.time % 60).padStart(2, "0")}</span>
+              <span className="text-red-500">{hud.scores[1]} RED <span className="text-xs font-bold opacity-60">({hud.aliveCounts[1]} up)</span></span>
             </div>
             <div className="flex gap-4 text-[10px] uppercase tracking-widest font-bold opacity-80">
-              <span className={cn(hud.flags[0].state !== "AT_BASE" && "text-red-400 animate-pulse")}>BLU INTEL: {flagText(hud.flags[0])}</span>
-              <span className={cn(hud.flags[1].state !== "AT_BASE" && "text-blue-400 animate-pulse")}>RED INTEL: {flagText(hud.flags[1])}</span>
+              {hud.flags.map((f: any, i: number) => (
+                <span key={i} className={cn("flex flex-col items-center", f.state !== "AT_BASE" && (i === 0 ? "text-red-400" : "text-blue-400"))}>
+                  {i === 0 ? "BLU" : "RED"} INTEL: {flagText(f)}
+                  {f.state === "DROPPED" && <span className="mt-0.5 h-1 w-24 overflow-hidden rounded bg-muted"><span className="block h-full bg-yellow-500" style={{ width: `${(f.returnT / 60) * 100}%` }} /></span>}
+                </span>
+              ))}
             </div>
           </div>
 
@@ -127,12 +137,19 @@ function Index() {
                     <div className={cn("text-xl font-bold", hud.uber >= 1 ? "text-primary animate-pulse" : "text-muted-foreground")}>ÜberCharge: {Math.floor(hud.uber * 100)}%</div>
                     <div className="h-1.5 w-32 bg-muted rounded-full overflow-hidden"><div className="h-full bg-primary" style={{ width: `${hud.uber * 100}%` }} /></div>
                     {hud.healing && <div className="text-[10px] font-bold text-green-400">HEALING: {hud.healing}</div>}
+                    {hud.healHp != null && <div className="h-1.5 w-32 overflow-hidden rounded-full bg-muted"><div className="h-full bg-green-500" style={{ width: `${hud.healHp * 100}%` }} /></div>}
                   </>
                 )}
                 {hud.cls === "engineer" && (
                   <>
                     <div className="text-xl font-bold text-yellow-500">Metal: {hud.metal}</div>
                     <div className="h-1.5 w-32 bg-muted rounded-full overflow-hidden"><div className="h-full bg-yellow-500" style={{ width: `${(hud.metal / 200) * 100}%` }} /></div>
+                    {hud.myBuildings.map((b: any, i: number) => (
+                      <div key={i} className="flex items-center gap-2 text-[10px] font-bold uppercase">
+                        <span className="w-16">{b.type.replace("_", " ")} L{b.level}</span>
+                        <span className="h-1 w-16 overflow-hidden rounded bg-muted"><span className={cn("block h-full", b.hp < 40 ? "bg-destructive" : "bg-green-500")} style={{ width: `${b.hp}%` }} /></span>
+                      </div>
+                    ))}
                   </>
                 )}
               </div>
@@ -167,13 +184,14 @@ function Index() {
           </div>
 
           {/* 1. Respawn countdown */}
-          {!hud.alive && <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 translate-y-12 rounded-lg bg-card/90 px-6 py-3 text-center"><div className="text-xs uppercase tracking-widest text-muted-foreground">Respawning in</div><div className="text-4xl font-black text-primary">{hud.respawnIn}s</div></div>}
+          {!hud.alive && <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 translate-y-12 rounded-lg bg-card/90 px-6 py-3 text-center">{hud.killedBy && <div className="mb-1 text-sm font-bold text-destructive">Killed by {hud.killedBy}</div>}<div className="text-xs uppercase tracking-widest text-muted-foreground">Respawning in</div><div className="text-4xl font-black text-primary">{hud.respawnIn}s</div></div>}
           {/* 2. K/D tracker */}
-          <div className="pointer-events-none absolute right-3 top-[136px] rounded bg-card/80 px-3 py-1 font-mono text-xs">K {hud.kills} · D {hud.deaths}</div>
+          <div className="pointer-events-none absolute right-3 top-[136px] rounded bg-card/80 px-3 py-1 font-mono text-xs">K {hud.kills} · D {hud.deaths}{hud.streak >= 2 && <span className="ml-2 font-black text-yellow-500">🔥{hud.streak}</span>}</div>
           {/* 3. Carrying intel banner */}
           {hud.carrying && <div className="pointer-events-none absolute left-1/2 top-24 -translate-x-1/2 animate-pulse rounded bg-primary px-4 py-1 text-sm font-black text-primary-foreground">YOU HAVE THE INTEL — RETURN TO BASE!</div>}
           {/* 4. Low ammo hint */}
           {hud.alive && hud.maxClip > 0 && hud.clip === 0 && !hud.reloading && hud.reserve > 0 && <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 translate-y-8 text-sm font-bold text-destructive">Press R to reload</div>}
+          {hud.alive && hud.maxClip > 0 && hud.reserve > 0 && hud.reserve <= hud.maxClip && <div className="pointer-events-none absolute bottom-40 right-6 text-xs font-bold text-yellow-500">LOW RESERVE AMMO</div>}
           {/* 5. Sniper charge */}
           {hud.scoped && <div className="pointer-events-none absolute left-1/2 top-1/2 h-1.5 w-40 -translate-x-1/2 translate-y-10 overflow-hidden rounded bg-muted"><div className="h-full bg-primary" style={{ width: `${Math.min(100, hud.charge * 100)}%` }} /></div>}
           {/* 6. Spy cloak / disguise */}
