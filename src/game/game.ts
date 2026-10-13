@@ -332,7 +332,7 @@ export class Game {
         if (p.cls === "spy" && n === 4) { p.disguised = !p.disguised; this.refreshLook(p); this.flash(p.disguised ? "Disguised as enemy" : "Disguise removed"); }
       }
       if (e.code === "KeyQ") { p.input.slot = p.slot === 0 ? 1 : 0; }
-      if (e.code === "Space") e.preventDefault();
+      if (e.code === "Space" || e.code === "Tab") e.preventDefault();
     };
     const ku = (e: KeyboardEvent) => this.keys.delete(e.code);
     const mm = (e: MouseEvent) => {
@@ -1245,7 +1245,8 @@ export class Game {
       message: this.messageT > 0 ? this.message : "", winner: this.winner, carrying: p.carrying, hurt: this.hurtFlash > 0, hurtDirection: this.hurtDirection,
       healing: p.healTarget?.name ?? null, slots: p.weapons.map((x) => x.def.name), slot: p.slot, locked: this.locked,
       kills: p.kills, deaths: p.deaths, pending: p.pendingCls,
-      hit: this.hitT > 0,
+      hit: this.hitT > 0, showBoard: this.keys.has("Tab"),
+      board: this.actors.map((a) => ({ name: a.name, team: a.team, cls: a.cls, kills: a.kills, deaths: a.deaths, alive: a.alive, me: a === p })).sort((a, b) => b.kills - a.kills),
     };
   }
 }

@@ -166,6 +166,42 @@ function Index() {
             </div>
           </div>
 
+          {/* 1. Respawn countdown */}
+          {!hud.alive && <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 translate-y-12 rounded-lg bg-card/90 px-6 py-3 text-center"><div className="text-xs uppercase tracking-widest text-muted-foreground">Respawning in</div><div className="text-4xl font-black text-primary">{hud.respawnIn}s</div></div>}
+          {/* 2. K/D tracker */}
+          <div className="pointer-events-none absolute right-3 top-[136px] rounded bg-card/80 px-3 py-1 font-mono text-xs">K {hud.kills} · D {hud.deaths}</div>
+          {/* 3. Carrying intel banner */}
+          {hud.carrying && <div className="pointer-events-none absolute left-1/2 top-24 -translate-x-1/2 animate-pulse rounded bg-primary px-4 py-1 text-sm font-black text-primary-foreground">YOU HAVE THE INTEL — RETURN TO BASE!</div>}
+          {/* 4. Low ammo hint */}
+          {hud.alive && hud.maxClip > 0 && hud.clip === 0 && !hud.reloading && hud.reserve > 0 && <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 translate-y-8 text-sm font-bold text-destructive">Press R to reload</div>}
+          {/* 5. Sniper charge */}
+          {hud.scoped && <div className="pointer-events-none absolute left-1/2 top-1/2 h-1.5 w-40 -translate-x-1/2 translate-y-10 overflow-hidden rounded bg-muted"><div className="h-full bg-primary" style={{ width: `${Math.min(100, hud.charge * 100)}%` }} /></div>}
+          {/* 6. Spy cloak / disguise */}
+          {hud.cls === "spy" && <div className="pointer-events-none absolute bottom-40 left-6 rounded bg-card/80 px-3 py-2 text-xs font-bold"><div>Cloak {Math.round(hud.cloak * (hud.cloak <= 1 ? 100 : 1))}%{hud.cloaked && " · CLOAKED"}</div><div className={hud.disguised ? "text-primary" : "text-muted-foreground"}>{hud.disguised ? "DISGUISED" : "Not disguised (4)"}</div></div>}
+          {/* 7. Burning warning */}
+          {hud.burning && <div className="pointer-events-none absolute left-1/2 bottom-32 -translate-x-1/2 animate-pulse text-lg font-black text-destructive">ON FIRE! Find water or health</div>}
+          {/* 8. Build mode hint */}
+          {hud.buildMode && <div className="pointer-events-none absolute left-1/2 bottom-24 -translate-x-1/2 rounded bg-card/90 px-4 py-1 text-sm font-bold">Placing {hud.buildMode.replace("_", " ")} — {hud.ghostValid ? "click to build" : "invalid spot"}</div>}
+          {/* 9. Übercharge active */}
+          {hud.uberActive && <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_120px_hsl(var(--primary)/0.5)]" />}
+          {/* 10. Tab scoreboard */}
+          {!hud.showBoard && hud.locked && <div className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground">Hold TAB for scoreboard</div>}
+          {hud.showBoard && (
+            <div className="pointer-events-none absolute left-1/2 top-1/2 grid w-[640px] -translate-x-1/2 -translate-y-1/2 grid-cols-2 gap-4 rounded-xl bg-card/95 p-4 font-mono text-xs">
+              {[0, 1].map((t) => (
+                <div key={t}>
+                  <div className={cn("mb-2 font-black", t === 0 ? "text-blue-500" : "text-red-500")}>{t === 0 ? "BLU" : "RED"} — {hud.scores[t]}</div>
+                  {hud.board.filter((b: any) => b.team === t).map((b: any, i: number) => (
+                    <div key={i} className={cn("flex justify-between py-0.5", b.me && "text-primary font-bold", !b.alive && "opacity-50")}>
+                      <span>{b.name} ({CLASSES[b.cls as ClassId].name})</span><span>{b.kills}/{b.deaths}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+          {hud.winner != null && hud.winner !== "" && <div className="pointer-events-none absolute left-1/2 top-1/4 -translate-x-1/2 text-5xl font-black text-primary">{hud.winner === 0 ? "BLU" : hud.winner === 1 ? "RED" : hud.winner} WINS!</div>}
+
           {!hud.locked && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
               <div className="rounded-full bg-primary px-8 py-3 text-xl font-black text-primary-foreground animate-bounce shadow-2xl ring-4 ring-primary/20 cursor-pointer">CLICK TO JOIN BATTLE</div>
