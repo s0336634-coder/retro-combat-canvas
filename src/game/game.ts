@@ -1245,7 +1245,12 @@ export class Game {
       killfeed: this.killfeed.filter((k) => this.time - k.t < 8).map((k) => ({ text: k.text, team: k.team })),
       message: this.messageT > 0 ? this.message : "", winner: this.winner, carrying: p.carrying, hurt: this.hurtFlash > 0, hurtDirection: this.hurtDirection,
       healing: p.healTarget?.name ?? null, slots: p.weapons.map((x) => x.def.name), slot: p.slot, locked: this.locked,
-      kills: p.kills, deaths: p.deaths, pending: p.pendingCls,
+      kills: p.kills, deaths: p.deaths, pending: p.pendingCls, streak: p.streak,
+      time: Math.floor(this.time), killedBy: p.lastAttacker?.name ?? null,
+      objAngle: (() => { const t = p.carrying ? this.flags[p.team].home : this.flags[1 - p.team].pos; return Math.atan2(-(t.x - p.pos.x), -(t.z - p.pos.z)) - p.yaw; })(),
+      healHp: p.healTarget ? p.healTarget.hp / p.healTarget.maxHp : null,
+      aliveCounts: [this.actors.filter((a) => a.team === 0 && a.alive).length, this.actors.filter((a) => a.team === 1 && a.alive).length],
+      myBuildings: this.buildings.filter((b) => b.owner === p).map((b) => ({ type: b.type, level: b.level, hp: Math.ceil((b.hp / b.maxHp) * 100) })),
       hit: this.hitT > 0, showBoard: this.keys.has("Tab"),
       board: this.actors.map((a) => ({ name: a.name, team: a.team, cls: a.cls, kills: a.kills, deaths: a.deaths, alive: a.alive, me: a === p })).sort((a, b) => b.kills - a.kills),
     };
