@@ -42,10 +42,10 @@ export function ClassPreview({ cls }: { cls: ClassId }) {
       scene.add(disc);
 
       const model = models.buildClassModel(0, cls);
-      const def = classesMod.CLASSES[cls].weapons[0];
+      const def = classesMod.CLASSES[cls].weapons[0] as NonNullable<(typeof classesMod.CLASSES)[ClassId]["weapons"][number]>;
       model.gun.add(models.buildWeaponModel(def, 0));
-      const arms = { l: model.g.userData.leftArm, r: model.g.userData.rightArm };
-      const legs = { l: model.g.userData.leftLeg, r: model.g.userData.rightLeg };
+      const arms = { l: model.g.userData["leftArm"], r: model.g.userData["rightArm"] };
+      const legs = { l: model.g.userData["leftLeg"], r: model.g.userData["rightLeg"] };
       if (arms.l) arms.l.rotation.x = 0.5; // relaxed weapon-hold pose
       if (arms.r) arms.r.rotation.x = -0.15;
       scene.add(model.g);
