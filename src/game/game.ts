@@ -8,7 +8,7 @@ import { botThink, makeBrain, type Brain } from "./ai";
 
 export type Team = 0 | 1;
 export const TEAM_NAME = ["BLU", "RED"];
-export const TEAM_COLOR = [0x4f86b3, 0xc0453a];
+export { TEAM_COLOR };
 export type Input = { wx: number; wz: number; jump: boolean; crouch: boolean; fire: boolean; alt: boolean; yaw: number; pitch: number; slot: number; reload: boolean };
 export type WState = { def: WeaponDef; clip: number; reserve: number };
 export type BldType = "sentry" | "dispenser" | "tele_in" | "tele_out";
