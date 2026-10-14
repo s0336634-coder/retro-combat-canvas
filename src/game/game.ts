@@ -165,31 +165,9 @@ export class Game {
   }
 
   makeActorMesh(team: Team, cls: ClassId) {
-    const g = new THREE.Group();
-    const bodyMat = new THREE.MeshLambertMaterial({ color: TEAM_COLOR[team] });
-    const skin = new THREE.MeshLambertMaterial({ color: 0xe0b48c });
-    const dark = new THREE.MeshLambertMaterial({ color: 0x3a3028 });
-    const hatM = new THREE.MeshLambertMaterial({ color: CLASSES[cls].hat });
-    const big = cls === "heavy" ? 1.25 : cls === "scout" || cls === "spy" ? 0.9 : 1;
-    const limb = (x: number, y: number, h: number, mat: THREE.Material) => { const pivot = new THREE.Group(); pivot.position.set(x, y, 0); const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.22 * big, h, 0.25), mat); mesh.position.y = -h / 2; mesh.castShadow = true; pivot.add(mesh); g.add(pivot); return pivot; };
-    const leftLeg = limb(-0.2 * big, 0.82, 0.78, dark), rightLeg = limb(0.2 * big, 0.82, 0.78, dark);
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.76 * big, cls === "heavy" ? 0.78 : 0.68, 0.48 * big), bodyMat); torso.position.y = 1.15;
-    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.79 * big, 0.12, 0.5 * big), dark); belt.position.y = 0.88;
-    const head = new THREE.Mesh(new THREE.DodecahedronGeometry(0.25, 1), skin); head.position.y = 1.65;
-    const hat = new THREE.Mesh(new THREE.CylinderGeometry(cls === "soldier" ? 0.3 : 0.24, 0.26, cls === "pyro" ? 0.28 : 0.14, cls === "engineer" ? 6 : 10), hatM); hat.position.y = 1.89;
-    const leftArm = limb(-0.48 * big, 1.42, 0.62, bodyMat), rightArm = limb(0.48 * big, 1.42, 0.62, bodyMat);
-    const gunMat = new THREE.MeshLambertMaterial({ color: 0x444444 });
-    const gun = new THREE.Group(); gun.position.set(0.35 * big, 1.1, -0.35);
-    for (const m of [torso, belt, head, hat]) { m.castShadow = true; g.add(m); }
-    if (cls === "medic") { const pack = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.65, 0.24), hatM); pack.position.set(0, 1.2, 0.34); g.add(pack); }
-    if (cls === "engineer") { const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.05, 8), hatM); brim.position.y = 1.82; g.add(brim); }
-    if (cls === "pyro") { const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.68, 8), gunMat); tank.position.set(0, 1.18, 0.38); g.add(tank); }
-    if (cls === "demoman") for (let i = 0; i < 3; i++) { const grenade = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 4), gunMat); grenade.position.set(-0.18 + i * 0.18, 1.22, -0.27); g.add(grenade); }
-    if (cls === "sniper") { const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.04, 10), hatM); brim.position.y = 1.83; g.add(brim); }
-    g.userData.leftLeg = leftLeg; g.userData.rightLeg = rightLeg; g.userData.leftArm = leftArm; g.userData.rightArm = rightArm;
-    g.add(gun);
-    this.scene.add(g);
-    return { g, bodyMat, mats: [bodyMat, skin, dark, hatM, gunMat], gun };
+    const r = buildClassModel(team, cls);
+    this.scene.add(r.g);
+    return r;
   }
 
   spawnActor(team: Team, cls: ClassId, isBot: boolean, name: string): Actor {
