@@ -9,6 +9,7 @@ export function ClassPreview({ cls }: { cls: ClassId }) {
     if (!canvas) return;
     let raf = 0;
     let cancelled = false;
+    let cleanup: null | (() => void) = null;
 
     (async () => {
       const [models, THREE, classesMod] = await Promise.all([
