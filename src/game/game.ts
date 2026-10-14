@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { buildMap, TEAM_SIGN, WATER_Y, MOAT_X, type GameMap } from "./map";
 import { World, rayBox } from "./physics";
 import { CLASSES, CLASS_ORDER, BASE_SPEED, BUILD_COST, type ClassId, type WeaponDef } from "./classes";
+import { buildClassModel, buildWeaponModel, TEAM_COLOR } from "./classModel";
 import { botThink, makeBrain, type Brain } from "./ai";
 
 export type Team = 0 | 1;
