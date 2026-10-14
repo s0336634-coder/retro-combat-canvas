@@ -76,7 +76,7 @@ export function ClassPreview({ cls }: { cls: ClassId }) {
       };
       tick();
 
-      cleanupRef.current = () => {
+      cleanup = () => {
         cancelAnimationFrame(raf);
         ro.disconnect();
         scene.traverse((o: any) => {
@@ -88,11 +88,9 @@ export function ClassPreview({ cls }: { cls: ClassId }) {
       };
     })();
 
-    const cleanupRef = { current: null as null | (() => void) };
     return () => {
       cancelled = true;
-      cancelAnimationFrame(raf);
-      cleanupRef.current?.();
+      cleanup?.();
     };
   }, [cls]);
 
