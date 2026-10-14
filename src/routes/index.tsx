@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { CLASS_ORDER, CLASSES, type ClassId } from "@/game/classes";
 import { cn } from "@/lib/utils";
+import { ClassPreview } from "@/components/ClassPreview";
 
 export const Route = createFileRoute("/")({
   head: () => ({
