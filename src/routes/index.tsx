@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { CLASS_ORDER, CLASSES, type ClassId } from "@/game/classes";
 import { cn } from "@/lib/utils";
+import { ClassPreview } from "@/components/ClassPreview";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -22,6 +23,7 @@ function Index() {
   const mini = useRef<HTMLCanvasElement>(null);
   const game = useRef<any>(null);
   const [cls, setCls] = useState<ClassId | null>(null);
+  const [hover, setHover] = useState<ClassId | null>(null);
   const [hud, setHud] = useState<any>(null);
   
   const flagText = (flag: any) => flag.state === "AT_BASE" ? "SECURE" : flag.state === "DROPPED" ? `DROPPED ${flag.returnT}s` : `TAKEN · ${flag.carrier}`;
@@ -46,16 +48,60 @@ function Index() {
       <canvas ref={mini} width={320} height={120} className="absolute right-3 top-3 rounded border border-white/10 shadow-lg" />
       
       {!cls && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 bg-background/95 p-6 backdrop-blur-sm">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 overflow-y-auto bg-background/95 p-6 backdrop-blur-sm">
           <h1 className="text-6xl font-black tracking-tighter text-primary">2FORT DEMAKE</h1>
           <p className="max-w-md text-center text-muted-foreground">Pick your role. WASD to move, Mouse to aim/fire, R to reload, 1-3 to switch weapons. BLU Team.</p>
-          <div className="grid grid-cols-3 gap-3">
-            {CLASS_ORDER.map((c) => (
-              <button key={c} onClick={() => setCls(c)} className="group flex flex-col rounded-lg border border-border bg-card p-4 text-left transition-all hover:scale-105 hover:bg-accent hover:shadow-xl">
-                <div className="text-lg font-bold group-hover:text-primary">{CLASSES[c].name}</div>
-                <div className="text-xs leading-tight text-muted-foreground">{CLASSES[c].role}</div>
-              </button>
-            ))}
+          <div className="flex flex-col items-start gap-6 md:flex-row">
+            <div className="grid grid-cols-3 gap-3">
+              {CLASS_ORDER.map((c) => (
+                <button
+                  key={c}
+                  onMouseEnter={() => setHover(c)}
+                  onMouseLeave={() => setHover(null)}
+                  onFocus={() => setHover(c)}
+                  onBlur={() => setHover(null)}
+                  onClick={() => setCls(c)}
+                  className={cn(
+                    "flex w-44 flex-col rounded-lg border p-4 text-left transition-all hover:scale-105 hover:bg-accent hover:shadow-xl",
+                    hover === c ? "border-primary bg-accent shadow-lg" : "border-border bg-card"
+                  )}
+                >
+                  <div className="text-lg font-bold group-hover:text-primary">{CLASSES[c].name}</div>
+                  <div className="text-xs leading-tight text-muted-foreground">{CLASSES[c].role}</div>
+                </button>
+              ))}
+            </div>
+            <div className="flex w-72 shrink-0 flex-col rounded-xl border border-border bg-card p-4 shadow-xl">
+              {hover ? (
+                <>
+                  <div className="mb-1 flex items-baseline justify-between">
+                    <div className="text-xl font-black text-primary">{CLASSES[hover].name}</div>
+                    <div className="text-xs font-bold text-muted-foreground">{CLASSES[hover].hp} HP</div>
+                  </div>
+                  <div className="h-40 w-full rounded-lg bg-background/60 overflow-hidden">
+                    <ClassPreview cls={hover} />
+                  </div>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-muted">
+                    <div className="h-full bg-green-500" style={{ width: `${(CLASSES[hover].hp / 300) * 100}%` }} />
+                  </div>
+                  <p className="mt-2 text-xs leading-snug text-muted-foreground">{CLASSES[hover].role}</p>
+                  <div className="mt-2 space-y-0.5">
+                    {CLASSES[hover].weapons.map((w) => (
+                      <div key={w.name} className="flex justify-between text-xs">
+                        <span className="font-bold">{w.name}</span>
+                        <span className="text-muted-foreground">{w.clip > 0 ? `${w.clip} / ${w.reserve}` : "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 text-center text-[10px] font-bold uppercase tracking-widest text-primary animate-pulse">Click to play</div>
+                </>
+              ) : (
+                <div className="flex h-[340px] flex-col items-center justify-center text-center">
+                  <div className="text-5xl opacity-40">🏃</div>
+                  <p className="mt-3 max-w-[180px] text-xs text-muted-foreground">Hover a class to see what they look like, their loadout and stats.</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
