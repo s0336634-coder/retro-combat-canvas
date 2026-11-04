@@ -1,10 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { CLASS_ORDER, CLASSES, type ClassId } from "@/game/classes";
+import { CLASSES, type ClassId } from "@/game/classes";
 import { cn } from "@/lib/utils";
 import { ClassSelection } from "@/components/ClassSelection";
 import { Button } from "@/components/ui/button";
-import { Expand, Users, Settings2, Play, X } from "lucide-react";
+import { Expand, Users, Settings2, Play } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   ssr: false,
@@ -190,8 +190,8 @@ function Index() {
               
               {/* Reload Progress */}
               {hud.reloading && (
-                <div className="mt-2 w-full h-1 bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-primary transition-[width]" style={{ width: `${hud.reloadProgress * 100}%` }} />
+                <div className="mt-2 w-full">
+                  <div className="h-1 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-[width]" style={{ width: `${hud.reloadProgress * 100}%` }} /></div>
                   <div className="text-[9px] text-center mt-1 font-bold text-primary animate-pulse">RELOADING {Math.round(hud.reloadProgress * 100)}%</div>
                 </div>
               )}
