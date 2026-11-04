@@ -5,6 +5,7 @@ import { World, rayBox } from "./physics";
 import { CLASSES, CLASS_ORDER, BASE_SPEED, BUILD_COST, type ClassId, type WeaponDef } from "./classes";
 import { buildClassModel, buildWeaponModel, TEAM_COLOR } from "./classModel";
 import { botThink, makeBrain, type Brain } from "./ai";
+import { MOTION, weaponPose, reloadProgress } from "./animation";
 
 export type Team = 0 | 1;
 export const TEAM_NAME = ["BLU", "RED"];
@@ -80,6 +81,9 @@ export class Game {
   private matCache = new Map<number, THREE.MeshLambertMaterial>();
   private disposers: (() => void)[] = [];
   private hurtDirection = 0;
+  sensitivity = 1;
+  private aimSway = { x: 0, y: 0 };
+  private drawT = 0;
 
   constructor(private canvas: HTMLCanvasElement, minimap: HTMLCanvasElement | null, team: Team, cls: ClassId) {
     this.minimap = minimap;
@@ -257,7 +261,9 @@ export class Game {
     const ku = (e: KeyboardEvent) => this.keys.delete(e.code);
     const mm = (e: MouseEvent) => {
       if (!this.locked) return;
-      const s = this.player.scoped ? 0.0006 : 0.0022;
+      const s = (this.player.scoped ? 0.0006 : 0.0022) * this.sensitivity;
+      this.aimSway.x = Math.max(-0.035, Math.min(0.035, e.movementX * 0.001));
+      this.aimSway.y = Math.max(-0.025, Math.min(0.025, e.movementY * 0.001));
       this.player.input.yaw -= e.movementX * s;
       this.player.input.pitch = Math.max(-1.5, Math.min(1.5, this.player.input.pitch - e.movementY * s));
     };
@@ -301,6 +307,7 @@ export class Game {
     };
     this.raf = requestAnimationFrame(loop);
   }
+  sim(seconds: number) { if (import.meta.env.DEV) for (let t = 0; t < seconds; t += 1 / 60) this.update(Math.min(1 / 60, seconds - t)); }
   dispose() {
     cancelAnimationFrame(this.raf);
     this.disposers.forEach((d) => d());
@@ -1050,6 +1057,7 @@ export class Game {
   }
 
   updateVisuals(dt: number) {
+    this.drawT += dt;
     for (const a of this.actors) {
       if (!a.alive) continue;
       // weapons that fire continuously are handled here too
@@ -1059,14 +1067,26 @@ export class Game {
         a.mesh.rotation.y = a.yaw;
         a.mesh.scale.y = a.h / 1.8;
         this.syncActorWeapon(a);
-        const moving = Math.hypot(a.vel.x, a.vel.z) > 0.5 && a.onGround;
-        const stride = moving ? Math.sin(this.time * 9 + a.id) * 0.55 : 0;
-        a.mesh.userData.leftLeg.rotation.x = stride; a.mesh.userData.rightLeg.rotation.x = -stride;
-        a.mesh.userData.leftArm.rotation.x = -stride * 0.45; a.mesh.userData.rightArm.rotation.x = stride * 0.45;
-        a.weaponAnim = Math.max(0, a.weaponAnim - dt * 5);
-        const melee = ["melee", "knife", "wrench"].includes(a.weapons[a.slot]?.def.kind);
-        a.gunMesh.rotation.set(melee ? -a.weaponAnim * 1.4 : a.weaponAnim * 0.12, 0, melee ? -a.weaponAnim * 0.8 : 0);
-        a.gunMesh.position.z = -0.35 + (melee ? 0 : a.weaponAnim * 0.16);
+        const speed = Math.hypot(a.vel.x, a.vel.z);
+        a.mesh.userData.walkPhase = (a.mesh.userData.walkPhase ?? a.id) + speed * dt * MOTION.strideRate;
+        const moving = speed > 0.5 && a.onGround;
+        const stride = moving ? Math.sin(a.mesh.userData.walkPhase) * Math.min(0.65, speed * 0.075) : 0;
+        const def = a.weapons[a.slot]?.def;
+        const melee = ["melee", "knife", "wrench"].includes(def?.kind);
+        const reload = a.reloadT > 0 ? reloadProgress(a.reloadT, def?.reload ?? 0) : 0;
+        const pose = weaponPose(a.weaponAnim, reload, melee, speed, this.drawT);
+        a.mesh.userData.leftLeg.rotation.x = a.onGround ? stride : -0.25;
+        a.mesh.userData.rightLeg.rotation.x = a.onGround ? -stride : 0.4;
+        a.mesh.userData.leftArm.rotation.x = -0.7 - stride * 0.16 + pose.rx * 0.4;
+        a.mesh.userData.rightArm.rotation.x = -0.55 + pose.rx * 0.5;
+        a.mesh.userData.leftArm.rotation.z = -0.12;
+        a.mesh.userData.rightArm.rotation.z = 0.1;
+        a.mesh.position.y += moving ? Math.abs(Math.sin(a.mesh.userData.walkPhase)) * 0.025 : Math.sin(this.drawT * 2 + a.id) * 0.007;
+        a.gunMesh.rotation.set(-a.pitch * 0.6 + pose.rx, pose.ry, pose.rz);
+        a.gunMesh.position.z = -0.35 + pose.z;
+        const rotor = a.gunMesh.getObjectByName("barrel-rotor");
+        if (rotor) rotor.rotation.z += a.revT * dt * 24;
+        a.weaponAnim = Math.max(0, a.weaponAnim - dt * (melee ? 3.5 : MOTION.recoilDecay));
         const glow = this.isInvuln(a) ? 0.8 : 0;
         a.bodyMat.emissive.setHex(glow ? TEAM_COLOR[a.team] : 0);
         a.bodyMat.emissiveIntensity = glow;
@@ -1096,11 +1116,16 @@ export class Game {
     const vdef = p.weapons[p.slot]?.def;
     if (vdef) {
       this.syncViewmodel(p);
-      p.weaponAnim = Math.max(0, p.weaponAnim - dt * 5);
       const meleeSwing = ["melee", "knife", "wrench"].includes(vdef.kind);
-      const kick = meleeSwing ? 0 : p.weaponAnim * 0.1;
-      this.viewmodel.position.z = -0.7 + kick;
-      this.viewmodel.rotation.set(meleeSwing ? -p.weaponAnim * 1.25 : p.weaponAnim * 0.08, meleeSwing ? p.weaponAnim * 0.45 : 0, meleeSwing ? -p.weaponAnim * 0.8 : 0);
+      const reload = p.reloadT > 0 ? reloadProgress(p.reloadT, vdef.reload ?? 0) : 0;
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const pose = weaponPose(p.weaponAnim, reload, meleeSwing, p.onGround ? Math.hypot(p.vel.x, p.vel.z) : 0, this.drawT, !reduced);
+      this.aimSway.x *= Math.exp(-MOTION.swayDamping * dt); this.aimSway.y *= Math.exp(-MOTION.swayDamping * dt);
+      this.viewmodel.position.set(0.32 + pose.x - this.aimSway.x, -0.28 + pose.y + this.aimSway.y, -0.7 + pose.z);
+      this.viewmodel.rotation.set(pose.rx, pose.ry + this.aimSway.x, pose.rz);
+      const rotor = this.viewmodel.getObjectByName("barrel-rotor");
+      if (rotor) rotor.rotation.z += p.revT * dt * 24;
+      p.weaponAnim = Math.max(0, p.weaponAnim - dt * (meleeSwing ? 3.5 : MOTION.recoilDecay));
       const melee = vdef.kind === "melee" || vdef.kind === "knife" || vdef.kind === "wrench";
       this.viewmodel.scale.set(melee ? 0.6 : 1, melee ? 0.6 : 1, melee ? 1.2 : 1);
       this.viewmodel.traverse((o) => { if (o instanceof THREE.Mesh) { const mat = o.material as THREE.MeshLambertMaterial; mat.opacity = p.cloaked ? 0.3 : 1; mat.transparent = p.cloaked; } });
@@ -1156,7 +1181,20 @@ export class Game {
 
   getHud() {
     const p = this.player, w = p.weapons[p.slot];
+    let teammate = null;
+    if (p.alive) {
+      const eye = this.eye(p), dir = this.dirOf(p.yaw, p.pitch);
+      let nearest = 35;
+      for (const a of this.actors) {
+        if (a === p || !a.alive || a.team !== p.team || a.cloaked) continue;
+        const to = this.center(a).sub(eye), dist = to.length();
+        if (dist < nearest && to.normalize().dot(dir) > 0.993 && this.los(eye, this.center(a))) {
+          nearest = dist; teammate = { name: a.name, hp: Math.ceil(a.hp), maxHp: a.maxHp };
+        }
+      }
+    }
     return {
+      teammate, reloadProgress: p.reloadT > 0 ? reloadProgress(p.reloadT, w?.def.reload ?? 0) : 0,
       hp: Math.ceil(p.hp), maxHp: p.maxHp, alive: p.alive, respawnIn: Math.ceil(p.respawnT), cls: p.cls, team: p.team,
       weapon: w?.def.name ?? "", clip: w?.clip ?? 0, reserve: w?.reserve ?? 0, kind: w?.def.kind ?? "", reloading: p.reloadT > 0, maxClip: w?.def.clip ?? 0,
       uber: p.uber, uberActive: p.uberT > 0, metal: p.metal, cloak: p.cloak, cloaked: p.cloaked, disguised: p.disguised,
