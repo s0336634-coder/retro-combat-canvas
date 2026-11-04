@@ -24,7 +24,7 @@ export function ClassPreview({ cls }: { cls: ClassId }) {
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
-      camera.position.set(1.0, 1.8, 4.4);
+      camera.position.set(0.8, 1.6, 4.8);
       camera.lookAt(0, 1.05, 0);
       scene.add(new THREE.HemisphereLight(0xdfefff, 0x4a4438, 1.35));
       const sun = new THREE.DirectionalLight(0xfff2d8, 1.8);
@@ -62,15 +62,17 @@ export function ClassPreview({ cls }: { cls: ClassId }) {
       ro.observe(el);
 
       const clock = new THREE.Clock();
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const tick = () => {
         if (cancelled) return;
         const dt = Math.min(clock.getDelta(), 0.05);
         const t = clock.getElapsedTime();
-        model.g.rotation.y = 0.55 + Math.sin(t * 0.45) * 0.5;
-        model.g.position.y = Math.sin(t * 1.6) * 0.03;
-        if (arms.l) arms.l.rotation.x = 0.5 + Math.sin(t * 2) * 0.06;
-        if (legs.l) legs.l.rotation.x = Math.sin(t * 1.6) * 0.05;
-        if (legs.r) legs.r.rotation.x = -Math.sin(t * 1.6) * 0.05;
+        model.g.rotation.y = 0.45 + (reduced ? 0 : Math.sin(t * 0.45) * 0.35);
+        model.g.position.y = reduced ? 0 : Math.sin(t * 1.6) * 0.012;
+        if (arms.l) arms.l.rotation.x = -0.7 + (reduced ? 0 : Math.sin(t * 2) * 0.025);
+        if (arms.r) arms.r.rotation.x = -0.55;
+        if (legs.l) legs.l.rotation.x = 0.03;
+        if (legs.r) legs.r.rotation.x = -0.03;
         renderer.render(scene, camera);
         raf = requestAnimationFrame(tick);
       };

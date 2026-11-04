@@ -302,6 +302,7 @@ export class Game {
       this.last = t;
       this.update(dt);
       this.renderer.render(this.scene, this.camera);
+      this.canvas.dataset.sceneReady = "1";
       this.drawMinimap();
       this.raf = requestAnimationFrame(loop);
     };
