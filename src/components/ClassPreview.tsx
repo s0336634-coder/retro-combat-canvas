@@ -67,7 +67,7 @@ export function ClassPreview({ cls }: { cls: ClassId }) {
         if (cancelled) return;
         const dt = Math.min(clock.getDelta(), 0.05);
         const t = clock.getElapsedTime();
-        model.g.rotation.y = 0.45 + (reduced ? 0 : Math.sin(t * 0.45) * 0.35);
+        model.g.rotation.y = Math.PI + 0.45 + (reduced ? 0 : Math.sin(t * 0.45) * 0.35);
         model.g.position.y = reduced ? 0 : Math.sin(t * 1.6) * 0.012;
         if (arms.l) arms.l.rotation.x = -0.7 + (reduced ? 0 : Math.sin(t * 2) * 0.025);
         if (arms.r) arms.r.rotation.x = -0.55;
