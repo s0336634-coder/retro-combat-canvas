@@ -11,3 +11,7 @@
 - [x] Make bots reliably pick up, escort, defend, and capture intelligence.
 - [x] Enrich bridge, moat, battlements, courtyard, sewers, and intel vaults.
 - [x] Verify updated NPC objective play and map rendering.
+- [ ] Improve weapon motion and class-model detail.
+- [ ] Refresh class selection and battle HUD.
+- [ ] Add class switching, aim sensitivity, fullscreen, reload progress, and teammate identification.
+- [ ] Verify animations and the menu-to-battle flow.
