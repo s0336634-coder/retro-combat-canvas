@@ -5,7 +5,7 @@ import { ClassPreview } from './ClassPreview';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
 
-export function ClassSelection({ onSelect, onClose, current }: { onSelect: (cls: ClassId) => void; onClose?: () => void; current?: ClassId }) {
+export function ClassSelection({ onSelect, onClose, current }: { onSelect: (cls: ClassId) => void; onClose?: (() => void) | undefined; current?: ClassId | undefined }) {
   const [preview, setPreview] = useState<ClassId>(current ?? 'soldier');
   const def = CLASSES[preview];
   return <section className="deployment absolute inset-0 z-30 overflow-y-auto bg-background text-foreground">
