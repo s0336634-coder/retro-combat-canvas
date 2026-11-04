@@ -40,8 +40,9 @@ export function buildWeaponModel(def: WeaponDef, team: 0 | 1, firstPerson = fals
     }
   } else if (def.kind === "minigun") {
     tube(0.22, 0.48, base, 0, 0, -0.12, 12); box(0.28, 0.28, 0.28, dark, 0, 0, 0.18);
-    for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; tube(0.025, 0.62, metal, Math.cos(a) * 0.11, Math.sin(a) * 0.11, -0.62, 6); }
-    tube(0.16, 0.05, dark, 0, 0, -0.95, 10);
+    const rotor = new THREE.Group(); rotor.name = "barrel-rotor"; g.add(rotor);
+    for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; rotor.add(tube(0.025, 0.62, metal, Math.cos(a) * 0.11, Math.sin(a) * 0.11, -0.62, 6)); }
+    rotor.add(tube(0.16, 0.05, dark, 0, 0, -0.95, 10));
   } else if (def.proj === "rocket") {
     tube(0.17, 0.95, base, 0, 0, -0.28, 12); tube(0.2, 0.12, dark, 0, 0, -0.8, 12);
     box(0.08, 0.13, 0.5, wood, 0, -0.17, 0.05); box(0.05, 0.12, 0.12, metal, 0, 0.19, -0.22);
@@ -61,6 +62,17 @@ export function buildWeaponModel(def: WeaponDef, team: 0 | 1, firstPerson = fals
     box(0.18, 0.2, def.name === "Pistol" || def.name === "Revolver" ? 0.52 : 0.72, base, 0, 0, -0.2);
     tube(0.045, 0.38, metal, 0, 0.03, -0.68, 8); box(0.09, 0.24, 0.2, wood, 0, -0.18, -0.03);
     if (def.pellets && def.pellets > 1) tube(0.07, 0.12, dark, 0, 0.03, -0.92, 10);
+  }
+  if (!melee) {
+    box(0.035, 0.045, 0.11, metal, 0, 0.13, -0.57);
+    box(0.12, 0.04, 0.18, dark, 0, -0.14, 0.06);
+    box(0.08, 0.06, 0.1, accent, 0.09, 0, -0.12);
+  }
+  if (firstPerson && def.name !== "Fists") {
+    for (const [x, z] of [[0.01, 0.02], [-0.05, -0.38]]) {
+      box(0.12, 0.12, 0.15, wood, x, -0.17, z);
+      box(0.14, 0.13, 0.34, accent, x, -0.19, z + 0.22);
+    }
   }
   g.scale.setScalar(firstPerson ? 0.58 : 0.72);
   g.traverse((o) => { if (o instanceof THREE.Mesh) { o.castShadow = true; o.userData.weaponPart = true; } });
@@ -90,6 +102,37 @@ export function buildClassModel(team: 0 | 1, cls: ClassId) {
   if (cls === "pyro") { const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.68, 8), gunMat); tank.position.set(0, 1.18, 0.38); g.add(tank); }
   if (cls === "demoman") for (let i = 0; i < 3; i++) { const grenade = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 4), gunMat); grenade.position.set(-0.18 + i * 0.18, 1.22, -0.27); g.add(grenade); }
   if (cls === "sniper") { const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.04, 10), hatM); brim.position.y = 1.83; g.add(brim); }
+  const detail = (w, h, d, mat, x, y, z, parent = g) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m;
+  };
+  // Boots, cuffs, gloved hands and faces preserve each class's existing silhouette.
+  for (const leg of [leftLeg, rightLeg]) detail(0.26 * big, 0.16, 0.37, dark, 0, -0.7, -0.06, leg);
+  for (const arm of [leftArm, rightArm]) {
+    detail(0.23 * big, 0.1, 0.26, dark, 0, -0.44, 0, arm);
+    detail(0.2 * big, 0.18, 0.23, cls === "pyro" ? dark : skin, 0, -0.61, 0, arm);
+  }
+  for (const x of [-0.085, 0.085]) detail(0.045, 0.045, 0.035, dark, x, 1.69, -0.23);
+  detail(0.075, 0.07, 0.09, skin, 0, 1.61, -0.25);
+  detail(0.09, 0.07, 0.035, hatM, 0, 0.88, -0.27);
+  if (cls === "heavy" || cls === "soldier" || cls === "sniper") {
+    const strap = detail(0.1, 0.65, 0.035, dark, -0.12, 1.2, -0.26); strap.rotation.z = -0.4;
+    if (cls === "heavy") for (let i = 0; i < 6; i++) detail(0.07, 0.09, 0.06, hatM, -0.22 + i * 0.04, 1.42 - i * 0.08, -0.29);
+  }
+  if (cls === "scout") {
+    detail(0.12, 0.14, 0.08, dark, -0.25, 1.7, 0);
+    detail(0.32, 0.035, 0.26, hatM, 0, 1.86, -0.18);
+  }
+  if (cls === "pyro") {
+    detail(0.34, 0.16, 0.06, dark, 0, 1.69, -0.23);
+    detail(0.14, 0.14, 0.14, gunMat, 0, 1.55, -0.29);
+  }
+  if (cls === "engineer" || cls === "sniper") detail(0.3, 0.08, 0.04, hatM, 0, 1.69, -0.26);
+  if (cls === "spy" || cls === "medic") {
+    detail(0.18, 0.36, 0.04, skin, 0, 1.3, -0.26);
+    detail(0.06, 0.29, 0.05, dark, 0, 1.26, -0.29);
+  }
+  if (cls === "medic") { detail(0.12, 0.35, 0.04, skin, 0, 1.2, 0.48); detail(0.34, 0.12, 0.04, skin, 0, 1.2, 0.48); }
+  g.userData.torso = torso; g.userData.head = head;
   g.userData.leftLeg = leftLeg; g.userData.rightLeg = rightLeg; g.userData.leftArm = leftArm; g.userData.rightArm = rightArm;
   g.add(gun);
   return { g, bodyMat, mats: [bodyMat, skin, dark, hatM, gunMat], gun };
