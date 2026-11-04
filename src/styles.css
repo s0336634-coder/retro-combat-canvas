@@ -59,6 +59,64 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-team-blu: var(--team-blu);
+  --color-team-red: var(--team-red);
+  --color-health: var(--health);
+  --color-warning: var(--warning);
+  --color-overlay: var(--overlay);
+}
+
+/* Industrial field dossier: charcoal, signal yellow, team blue and red. */
+.game-shell {
+  --background: oklch(0.19 0.008 90);
+  --foreground: oklch(0.94 0.008 90);
+  --card: oklch(0.24 0.008 90);
+  --card-foreground: var(--foreground);
+  --primary: oklch(0.83 0.15 88);
+  --primary-foreground: var(--background);
+  --muted: oklch(0.29 0.008 90);
+  --muted-foreground: oklch(0.72 0.012 90);
+  --accent: oklch(0.3 0.018 90);
+  --accent-foreground: var(--foreground);
+  --border: oklch(0.42 0.012 90);
+  --input: var(--border);
+  --ring: var(--primary);
+  --team-blu: oklch(0.75 0.1 236);
+  --team-red: oklch(0.71 0.17 27);
+  --health: oklch(0.78 0.12 155);
+  --warning: var(--primary);
+  --overlay: oklch(0.1 0 0);
+  --destructive: var(--team-red);
+  --radius: 0.375rem;
+  --damage-shadow: inset 0 0 100px oklch(0.6 0.2 27 / 0.45);
+  --uber-shadow: inset 0 0 120px oklch(0.83 0.15 88 / 0.45);
+  font-family: 'Arial Narrow', 'Trebuchet MS', sans-serif;
+  letter-spacing: 0;
+}
+.deployment { background-image: repeating-linear-gradient(0deg, transparent, transparent 39px, oklch(0.94 0.008 90 / 0.025) 40px); }
+.class-stage { background: radial-gradient(ellipse at 50% 85%, var(--accent), transparent 65%); }
+.game-shell .tracking-tighter, .game-shell .tracking-tight { letter-spacing: 0; }
+.damage-vignette { box-shadow: var(--damage-shadow); }
+.uber-vignette { box-shadow: var(--uber-shadow); }
+.hud-score { min-width: 350px; }
+.battle-tools { position: absolute; top: 150px; right: 12px; }
+@media (max-width: 767px) {
+  .deployment-grid { grid-template-columns: 1fr; gap: 24px; }
+  .deployment h1 { font-size: 30px; }
+  .class-stage { height: 230px; }
+  .game-shell .hud-minimap { width: 140px; height: 54px; top: 76px; right: 8px; }
+  .game-shell .hud-score { top: 8px; min-width: 0; width: calc(100% - 16px); padding: 8px; }
+  .game-shell .hud-score > div:first-child { font-size: 16px; gap: 18px; }
+  .game-shell .hud-killfeed { top: 78px; left: 8px; max-width: 48%; font-size: 9px; }
+  .game-shell .hud-health { left: 8px; bottom: 12px; gap: 6px; }
+  .game-shell .hud-ammo { right: 8px; bottom: 12px; }
+  .game-shell .hud-health > div, .game-shell .hud-ammo > div:last-child { padding: 10px; min-width: 100px; }
+  .game-shell .hud-health .text-5xl, .game-shell .hud-ammo .text-5xl { font-size: 30px; }
+  .game-shell .hud-board { width: calc(100% - 20px); gap: 8px; font-size: 9px; }
+  .battle-tools { top: 170px; right: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .game-shell *, .game-shell *::before, .game-shell *::after { animation: none !important; transition: none !important; }
 }
 
 :root {
