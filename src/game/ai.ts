@@ -152,6 +152,7 @@ export function botThink(a: Actor, g: Game, dt: number) {
     if (per.enemy) { if (b.target !== per.enemy) b.reactT = botReactionTime(g.botDifficulty, a.cls === 'sniper'); b.target = per.enemy; b.seenT = 1.5; }
     else if (b.seenT <= 0) b.target = null;
     if (b.target && !b.target.alive) b.target = null;
+    if (per.bld && b.targetBld !== per.bld && !b.target) b.reactT = botReactionTime(g.botDifficulty, a.cls === 'sniper');
     b.targetBld = per.bld;
     b.state = chooseState(g, a);
     const error = botAimError(g.botDifficulty, a.cls === 'sniper', Math.random());
@@ -326,6 +327,14 @@ function aimAt(g: Game, a: Actor, p: THREE.Vector3, dt: number) {
 
 // ---------- combat routines ----------
 function combat(g: Game, a: Actor, dt: number): { move: THREE.Vector3 | null; look: THREE.Vector3 | null } {
+  const result = combatRoutine(g, a, dt);
+  // Gate every hostile primary attack, including flames, backstabs, and building attacks.
+  // Healing and Engineer maintenance are handled outside this combat boundary.
+  if (a.brain?.reactT > 0) a.input.fire = false;
+  return result;
+}
+
+function combatRoutine(g: Game, a: Actor, dt: number): { move: THREE.Vector3 | null; look: THREE.Vector3 | null } {
   const b = a.brain!, inp = a.input;
   // spies & explosive classes vs buildings
   if (b.targetBld && (a.cls === "spy" || (!b.target && ["soldier", "demoman", "heavy", "scout", "pyro", "sniper"].includes(a.cls)))) {
@@ -337,6 +346,7 @@ function combat(g: Game, a: Actor, dt: number): { move: THREE.Vector3 | null; lo
       return { move: b.targetBld.sappedBy ? null : bp, look: bp };
     }
     inp.slot = a.cls === "demoman" ? 0 : a.cls === "sniper" ? 0 : 0;
+    bp.addScaledVector(b.aimErr, Math.min(1.5, bp.distanceTo(g.eye(a)) * 0.05));
     if (Math.abs(angleTo(a, g, bp)) < 0.2) inp.fire = true;
     if (a.cls === "sniper" && !a.scoped) inp.alt = !a.altPrev;
     return { move: null, look: bp };
