@@ -15,3 +15,5 @@
 - [x] Refresh class selection and battle HUD.
 - [x] Add class switching, aim sensitivity, fullscreen, reload progress, and teammate identification.
 - [x] Verify animation curves, desktop/mobile menus, and the menu-to-battle/class-switch flow.
+- [ ] Add bot difficulty presets for aim, reactions, and objective pressure.
+- [ ] Add pre-match and in-match difficulty selection and verify live behavior.
