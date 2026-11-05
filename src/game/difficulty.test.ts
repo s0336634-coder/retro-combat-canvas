@@ -35,7 +35,8 @@ describe('bot difficulty presets', () => {
     expect(botAimError('easy', true, 0.3)).toBe(4.5);
     expect(botAimError('normal', true, 0.3)).toBe(0.12);
     expect(botAimError('hard', true, 0.1)).toBe(4.5);
-    const { actor, game } = scenario('easy');
+    const { actor, enemy, game } = scenario('easy');
+    enemy.carrying = true;
     vi.spyOn(Math, 'random').mockReturnValue(0.75);
     botThink(actor, game, 0);
     expect(actor.brain?.aimErr.x).toBeCloseTo(0.275);
@@ -47,7 +48,8 @@ describe('bot difficulty presets', () => {
 
   it.each(['easy', 'normal', 'hard'] as const)('delays %s attacks until its reaction time expires', (difficulty) => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
-    const { actor, game } = scenario(difficulty);
+    const { actor, enemy, game } = scenario(difficulty);
+    enemy.carrying = true;
     botThink(actor, game, 0);
     expect(actor.brain?.reactT).toBe(BOT_DIFFICULTIES[difficulty].reactionTime);
     expect(actor.input.fire).toBe(false);
@@ -86,6 +88,7 @@ describe('bot difficulty presets', () => {
     expect(chooseState(game, actor)).toBe('BUILD_NEST');
     actor.cls = 'medic';
     enemy.team = 0;
+    enemy.pos.z = -5;
     game.actors.push(enemy);
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     if (actor.brain) actor.brain.reactT = 1;
