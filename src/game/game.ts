@@ -138,14 +138,16 @@ export class Game {
     this.scene.add(sun);
     const geo = new THREE.BoxGeometry(1, 1, 1);
     for (const b of this.map.boxes) {
-      const m = new THREE.Mesh(geo, this.mat(b.color));
-      m.scale.set(b.x1 - b.x0, b.y1 - b.y0, b.z1 - b.z0);
+      const w = b.x1 - b.x0, h = b.y1 - b.y0, d = b.z1 - b.z0;
+      const m = new THREE.Mesh(geo, mapBoxMaterial(b.color, w, h, d));
+      m.scale.set(w, h, d);
       m.position.set((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2);
       m.castShadow = b.y1 > 0.5; m.receiveShadow = true;
       this.scene.add(m);
     }
     const water = new THREE.Mesh(new THREE.BoxGeometry(MOAT_X * 2, 0.05, 60),
-      new THREE.MeshLambertMaterial({ color: 0x2d6f8f, transparent: true, opacity: 0.6 }));
+      new THREE.MeshLambertMaterial({ color: 0xffffff, map: waterTexture(), transparent: true, opacity: 0.75 }));
+    this.waterTex = waterTexture();
     water.position.set(0, WATER_Y, 0);
     this.scene.add(water);
     // intel flags
