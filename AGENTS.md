@@ -14,3 +14,4 @@
 - Keep rendering-only animation curves in a renderer-independent module so recoil and reload motion can be tested without WebGL.
 - Use shared class-selection UI for initial deployment and in-match switching so previews and loadouts remain consistent.
 - Dev builds expose `window.__game` (live Game instance) and `sim(seconds)` for fixed-step checks; the game canvas sets `data-scene-ready` after rendering.
+- Keep bot difficulty tuning in a renderer-independent module shared by AI and match controls; apply presets to both teams without changing player stats or restarting the match.

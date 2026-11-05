@@ -6,6 +6,7 @@ import { CLASSES, CLASS_ORDER, BASE_SPEED, BUILD_COST, type ClassId, type Weapon
 import { buildClassModel, buildWeaponModel, TEAM_COLOR } from "./classModel";
 import { botThink, makeBrain, type Brain } from "./ai";
 import { MOTION, weaponPose, reloadProgress } from "./animation";
+import { botReactionTime, type BotDifficulty } from './difficulty';
 
 export type Team = 0 | 1;
 export const TEAM_NAME = ["BLU", "RED"];
@@ -85,7 +86,7 @@ export class Game {
   private aimSway = { x: 0, y: 0 };
   private drawT = 0;
 
-  constructor(private canvas: HTMLCanvasElement, minimap: HTMLCanvasElement | null, team: Team, cls: ClassId) {
+  constructor(private canvas: HTMLCanvasElement, minimap: HTMLCanvasElement | null, team: Team, cls: ClassId, public botDifficulty: BotDifficulty = 'normal') {
     this.minimap = minimap;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -239,6 +240,16 @@ export class Game {
     else { a.pendingCls = cls; this.flash(`You will respawn as ${CLASSES[cls].name}`); }
   }
   respawnInPlace(a: Actor) { this.respawn(a); }
+
+  setBotDifficulty(difficulty: BotDifficulty) {
+    this.botDifficulty = difficulty;
+    for (const a of this.actors) {
+      if (!a.brain) continue;
+      a.brain.thinkT = 0;
+      a.brain.aimErr.set(0, 0, 0);
+      if (a.brain.target) a.brain.reactT = botReactionTime(difficulty, a.cls === 'sniper');
+    }
+  }
 
   // ---------------- input ----------------
   bindInput() {

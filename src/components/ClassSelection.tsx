@@ -4,8 +4,10 @@ import { CLASS_ORDER, CLASSES, type ClassId } from '@/game/classes';
 import { ClassPreview } from './ClassPreview';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
+import { BotDifficultySelector } from './BotDifficultySelector';
+import type { BotDifficulty } from '@/game/difficulty';
 
-export function ClassSelection({ onSelect, onClose, current }: { onSelect: (cls: ClassId) => void; onClose?: (() => void) | undefined; current?: ClassId | undefined }) {
+export function ClassSelection({ onSelect, onClose, current, difficulty, onDifficultyChange }: { onSelect: (cls: ClassId) => void; onClose?: (() => void) | undefined; current?: ClassId | undefined; difficulty: BotDifficulty; onDifficultyChange: (difficulty: BotDifficulty) => void }) {
   const [preview, setPreview] = useState<ClassId>(current ?? 'soldier');
   const def = CLASSES[preview];
   return <section className="deployment absolute inset-0 z-30 overflow-y-auto bg-background text-foreground">
@@ -23,6 +25,7 @@ export function ClassSelection({ onSelect, onClose, current }: { onSelect: (cls:
             </Button>)}
           </div>
           <div className="mt-5 flex items-center gap-2 border-t border-border pt-4 text-xs text-muted-foreground"><Shield className="size-4 text-team-blu" /> BLU TEAM <span className="ml-auto">CAPTURE THE INTELLIGENCE</span></div>
+          <div className="mt-5"><BotDifficultySelector value={difficulty} onChange={onDifficultyChange} /></div>
         </div>
         <div className="class-dossier relative min-w-0">
           <div className="flex items-baseline justify-between"><h2 className="text-3xl font-black uppercase text-primary">{def.name}</h2><span className="flex items-center gap-2 font-mono text-sm"><Heart className="size-4 text-health" /> {def.hp}</span></div>

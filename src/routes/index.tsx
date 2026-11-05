@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 import { ClassSelection } from "@/components/ClassSelection";
 import { Button } from "@/components/ui/button";
 import { Expand, Users, Settings2, Play } from "lucide-react";
+import { BotDifficultySelector } from '@/components/BotDifficultySelector';
+import type { BotDifficulty } from '@/game/difficulty';
 
 export const Route = createFileRoute("/")({
   ssr: false,
@@ -29,6 +31,8 @@ function Index() {
   const [classMenu, setClassMenu] = useState(false);
   const [settings, setSettings] = useState(false);
   const [sensitivity, setSensitivity] = useState(1);
+  const [difficulty, setDifficulty] = useState<BotDifficulty>('normal');
+  const difficultyRef = useRef<BotDifficulty>('normal');
   const [hud, setHud] = useState<any>(null);
   
   const flagText = (flag: any) => flag.state === "AT_BASE" ? "SECURE" : flag.state === "DROPPED" ? `DROPPED ${flag.returnT}s` : `TAKEN · ${flag.carrier}`;
@@ -38,7 +42,7 @@ function Index() {
     let alive = true;
     import("@/game/game").then(({ Game }) => {
       if (!alive || !canvas.current) return;
-      const g = new Game(canvas.current, mini.current, 0, cls);
+      const g = new Game(canvas.current, mini.current, 0, cls, difficultyRef.current);
       game.current = g;
       g.sensitivity = sensitivity;
       if (import.meta.env.DEV) (window as any).__game = g;
@@ -63,6 +67,11 @@ function Index() {
     if (game.current) { game.current.requestClass(next); setClassMenu(false); game.current.lock(); }
     else setCls(next);
   };
+  const changeDifficulty = (next: BotDifficulty) => {
+    difficultyRef.current = next;
+    setDifficulty(next);
+    game.current?.setBotDifficulty(next);
+  };
   const fullscreen = () => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     else document.documentElement.requestFullscreen?.().catch(() => {});
@@ -73,7 +82,7 @@ function Index() {
       <canvas ref={canvas} className="h-full w-full" onClick={() => game.current?.lock()} />
       <canvas ref={mini} width={320} height={120} className="hud-minimap absolute right-3 top-3 rounded border border-border/40 shadow-lg" />
       
-      {(!cls || classMenu) && <ClassSelection onSelect={switchClass} current={cls ?? undefined} onClose={cls ? () => { setClassMenu(false); game.current?.lock(); } : undefined} />}
+      {(!cls || classMenu) && <ClassSelection onSelect={switchClass} current={cls ?? undefined} difficulty={difficulty} onDifficultyChange={changeDifficulty} onClose={cls ? () => { setClassMenu(false); game.current?.lock(); } : undefined} />}
 
       {hud && (
         <>
@@ -245,6 +254,7 @@ function Index() {
                 <Button variant="outline" onClick={() => { setSettings(false); setClassMenu(true); }}><Users /> Change class</Button>
                 <Button variant="outline" onClick={() => setSettings((v) => !v)}><Settings2 /> Aim settings</Button>
                 <Button variant="ghost" onClick={fullscreen}><Expand /> Fullscreen</Button>
+                <BotDifficultySelector value={difficulty} onChange={changeDifficulty} />
                 {settings && <label className="flex flex-col gap-3 border-t border-border pt-3 text-xs">Mouse sensitivity <span className="font-mono text-primary">{sensitivity.toFixed(2)}×</span><input aria-label="Mouse sensitivity" type="range" min="0.25" max="2" step="0.05" value={sensitivity} onChange={(e) => { const value = Number(e.target.value); setSensitivity(value); if (game.current) game.current.sensitivity = value; }} /></label>}
               </div>
             </div>

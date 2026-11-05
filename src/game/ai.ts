@@ -2,6 +2,7 @@
 import * as THREE from "three";
 import type { Actor, Game, Team, Building, BldType } from "./game";
 import type { NavNode } from "./map";
+import { BOT_DIFFICULTIES, botAimError, botReactionTime, objectiveUtility } from './difficulty';
 
 export type BotState = "IDLE" | "PATROL" | "PURSUE_OBJECTIVE" | "ENGAGE_ENEMY" | "RETREAT_FOR_HEALTH" | "DEFEND_CHOKE" | "BUILD_NEST";
 export type Brain = {
@@ -20,7 +21,7 @@ export function makeBrain(a: Actor): Brain {
     reactT: 0, strafe: 1, strafeT: 0, stuckT: 0, lastPos: new THREE.Vector3(), bias: new Map(), idleT: 1 + Math.random(),
     aimErr: new THREE.Vector3(), heardT: 0, heardPos: null, buildStep: 0, stickyT: 0, home: "", lookYaw: 0,
     reset() { b.state = "IDLE"; b.path = []; b.goal = -1; b.target = null; b.idleT = 0.5 + Math.random(); b.buildStep = 0; b.stickyT = 0; b.lastPos.copy(a.pos); rollBias(); },
-    hurtBy(from) { if (!b.target || Math.random() < 0.5) { b.target = from; b.seenT = 2.5; b.reactT = 0.15; } },
+    hurtBy(from, g) { if (b.target === from) { b.seenT = 2.5; return; } if (!b.target || Math.random() < 0.5) { b.target = from; b.seenT = 2.5; b.reactT = botReactionTime(g.botDifficulty, a.cls === 'sniper', true); } },
   };
   const rollBias = () => { b.bias.clear(); };
   return b;
@@ -146,15 +147,16 @@ export function botThink(a: Actor, g: Game, dt: number) {
   if (b.idleT > 0) { b.idleT -= dt; b.state = "IDLE"; inp.wx = inp.wz = 0; return; }
 
   if (b.thinkT <= 0) {
-    b.thinkT = 0.25;
+    b.thinkT = BOT_DIFFICULTIES[g.botDifficulty].thinkInterval;
     const per = perceive(g, a);
-    if (per.enemy) { if (b.target !== per.enemy) b.reactT = a.cls === "sniper" ? 0.25 : 0.2; b.target = per.enemy; b.seenT = 1.5; }
+    if (per.enemy) { if (b.target !== per.enemy) b.reactT = botReactionTime(g.botDifficulty, a.cls === 'sniper'); b.target = per.enemy; b.seenT = 1.5; }
     else if (b.seenT <= 0) b.target = null;
     if (b.target && !b.target.alive) b.target = null;
+    if (per.bld && b.targetBld !== per.bld && !b.target) b.reactT = botReactionTime(g.botDifficulty, a.cls === 'sniper');
     b.targetBld = per.bld;
     b.state = chooseState(g, a);
-    const sniperMiss = a.cls === "sniper" && Math.random() < 0.28;
-    b.aimErr.set((Math.random() - 0.5), (Math.random() - 0.5), (Math.random() - 0.5)).multiplyScalar(sniperMiss ? 4.5 : a.cls === "sniper" ? 0.12 : 0.45);
+    const error = botAimError(g.botDifficulty, a.cls === 'sniper', Math.random());
+    b.aimErr.set((Math.random() - 0.5), (Math.random() - 0.5), (Math.random() - 0.5)).multiplyScalar(error);
   }
 
   let moveTo: THREE.Vector3 | null = null;
@@ -259,7 +261,7 @@ export function botThink(a: Actor, g: Game, dt: number) {
   if (look) aimAt(g, a, look, dt);
 }
 
-function chooseState(g: Game, a: Actor): import("./ai").BotState {
+export function chooseState(g: Game, a: Actor): import("./ai").BotState {
   const b = a.brain!;
   const own = g.flags[a.team], enemyFlag = g.flags[1 - a.team];
   const u: Record<string, number> = { PATROL: 10, PURSUE_OBJECTIVE: 0, ENGAGE_ENEMY: 0, RETREAT_FOR_HEALTH: 0, DEFEND_CHOKE: 0, BUILD_NEST: 0 };
@@ -275,6 +277,7 @@ function chooseState(g: Game, a: Actor): import("./ai").BotState {
     u.PURSUE_OBJECTIVE = Math.max(u.PURSUE_OBJECTIVE, role === "engineer" || role === "sniper" ? 35 : 85);
   }
   if (own.state !== "AT_BASE") u.PURSUE_OBJECTIVE = Math.max(u.PURSUE_OBJECTIVE, role === "sniper" || role === "engineer" ? 30 : 90);
+  u.PURSUE_OBJECTIVE = objectiveUtility(g.botDifficulty, u.PURSUE_OBJECTIVE, a.carrying);
   if (b.target) u.ENGAGE_ENEMY = 70 + (b.target.carrying ? 100 : 0) - (a.carrying ? 90 : 0);
   if (a.cls === "spy" && b.target && a.cloaked && !b.target.carrying) u.ENGAGE_ENEMY = 30;
   if (a.cls === "spy" && b.targetBld && b.targetBld.type === "sentry") u.ENGAGE_ENEMY = 90;
@@ -316,13 +319,22 @@ function aimAt(g: Game, a: Actor, p: THREE.Vector3, dt: number) {
   const dx = p.x - e.x, dy = p.y - e.y, dz = p.z - e.z;
   const wantYaw = Math.atan2(-dx, -dz), wantPitch = Math.atan2(dy, Math.hypot(dx, dz));
   let d = wantYaw - a.input.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
-  const rate = a.cls === "sniper" && a.scoped ? 3 : 9;
+  const speed = BOT_DIFFICULTIES[g.botDifficulty].turnSpeed;
+  const rate = (a.cls === "sniper" && a.scoped ? 3 : 9) * speed;
   a.input.yaw += Math.sign(d) * Math.min(Math.abs(d), rate * dt * (0.4 + Math.min(1, Math.abs(d))));
-  a.input.pitch += (Math.max(-1.4, Math.min(1.4, wantPitch)) - a.input.pitch) * Math.min(1, 8 * dt);
+  a.input.pitch += (Math.max(-1.4, Math.min(1.4, wantPitch)) - a.input.pitch) * Math.min(1, 8 * speed * dt);
 }
 
 // ---------- combat routines ----------
 function combat(g: Game, a: Actor, dt: number): { move: THREE.Vector3 | null; look: THREE.Vector3 | null } {
+  const result = combatRoutine(g, a, dt);
+  // Gate every hostile primary attack, including flames, backstabs, and building attacks.
+  // Healing and Engineer maintenance are handled outside this combat boundary.
+  if (a.brain?.reactT > 0) a.input.fire = false;
+  return result;
+}
+
+function combatRoutine(g: Game, a: Actor, dt: number): { move: THREE.Vector3 | null; look: THREE.Vector3 | null } {
   const b = a.brain!, inp = a.input;
   // spies & explosive classes vs buildings
   if (b.targetBld && (a.cls === "spy" || (!b.target && ["soldier", "demoman", "heavy", "scout", "pyro", "sniper"].includes(a.cls)))) {
@@ -334,6 +346,7 @@ function combat(g: Game, a: Actor, dt: number): { move: THREE.Vector3 | null; lo
       return { move: b.targetBld.sappedBy ? null : bp, look: bp };
     }
     inp.slot = a.cls === "demoman" ? 0 : a.cls === "sniper" ? 0 : 0;
+    bp.addScaledVector(b.aimErr, Math.min(1.5, bp.distanceTo(g.eye(a)) * 0.05));
     if (Math.abs(angleTo(a, g, bp)) < 0.2) inp.fire = true;
     if (a.cls === "sniper" && !a.scoped) inp.alt = !a.altPrev;
     return { move: null, look: bp };
@@ -357,7 +370,7 @@ function combat(g: Game, a: Actor, dt: number): { move: THREE.Vector3 | null; lo
       pref = 9; inp.slot = d < 2.5 ? 2 : 0;
       if (inp.slot === 0) {
         const lead = t.vel.clone().multiplyScalar(d / 28);
-        look = t.pos.clone().add(lead).add(new THREE.Vector3(0, 0.1, 0)); // rockets at the feet
+        look = t.pos.clone().add(lead).add(new THREE.Vector3(0, 0.1, 0)).addScaledVector(b.aimErr, Math.min(1.5, d * 0.05)); // rockets at the feet
         if (t.pos.y > a.pos.y + 4 && t.cls === "sniper" && a.onGround && d < 22 && a.hp > 120) { look = a.pos.clone().add(new THREE.Vector3(0, -1, 0)); inp.jump = true; inp.fire = a.input.pitch < -1.1; return { move: tc, look }; }
       }
       inp.fire = b.reactT <= 0 && Math.abs(angleTo(a, g, look)) < 0.3 && (d > 3 || a.hp > 100); break;
@@ -368,12 +381,12 @@ function combat(g: Game, a: Actor, dt: number): { move: THREE.Vector3 | null; lo
         if (p.team === a.team || p.kind === "syringe") continue;
         if (p.pos.distanceTo(g.eye(a)) < 5) { look = p.pos.clone(); inp.alt = !a.altPrev; break; }
       }
-      inp.fire = (inp.slot === 0 ? d < 7 : canShoot) && Math.abs(angleTo(a, g, look)) < 0.4;
+      inp.fire = b.reactT <= 0 && (inp.slot === 0 ? d < 7 : canShoot) && Math.abs(angleTo(a, g, look)) < 0.4;
       move = tc; break;
     }
     case "demoman":
       pref = 11; inp.slot = d < 2.5 ? 2 : 0;
-      if (inp.slot === 0) look = t.pos.clone().add(new THREE.Vector3(0, d * d * 0.012 + 0.2, 0));
+      if (inp.slot === 0) look = t.pos.clone().add(new THREE.Vector3(0, d * d * 0.012 + 0.2, 0)).addScaledVector(b.aimErr, Math.min(1.5, d * 0.05));
       inp.fire = b.reactT <= 0 && Math.abs(angleTo(a, g, look)) < 0.3 && d > 3;
       // detonate stickies near enemy
       for (const p of g.projectiles) if (p.owner === a && p.kind === "sticky" && p.stuck && p.pos.distanceTo(tc) < 3) { inp.alt = !a.altPrev; break; }
