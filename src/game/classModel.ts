@@ -2,16 +2,17 @@
 // Shared low-poly character/weapon builders — used by the game and the class-select preview.
 import * as THREE from "three";
 import { CLASSES, type ClassId, type WeaponDef } from "./classes";
+import { gearMat } from "./textures";
 
 export const TEAM_COLOR = [0x4f86b3, 0xc0453a];
 
 export function buildWeaponModel(def: WeaponDef, team: 0 | 1, firstPerson = false) {
   const g = new THREE.Group();
-  const base = new THREE.MeshLambertMaterial({ color: def.color });
-  const dark = new THREE.MeshLambertMaterial({ color: 0x242424 });
-  const metal = new THREE.MeshLambertMaterial({ color: 0x8a8d89 });
-  const accent = new THREE.MeshLambertMaterial({ color: TEAM_COLOR[team] });
-  const wood = new THREE.MeshLambertMaterial({ color: 0x704729 });
+  const base = gearMat(def.color, "paint");
+  const dark = gearMat(0x242424, "metal");
+  const metal = gearMat(0x9a9d99, "metal");
+  const accent = gearMat(TEAM_COLOR[team], "paint");
+  const wood = gearMat(0x704729, "wood");
   const box = (w: number, h: number, d: number, mat: THREE.Material, x = 0, y = 0, z = 0) => {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); mesh.position.set(x, y, z); g.add(mesh); return mesh;
   };
@@ -64,6 +65,9 @@ export function buildWeaponModel(def: WeaponDef, team: 0 | 1, firstPerson = fals
     if (def.pellets && def.pellets > 1) tube(0.07, 0.12, dark, 0, 0.03, -0.92, 10);
   }
   if (!melee) {
+    box(0.05, 0.03, 0.4, dark, 0, 0.12, -0.25); // top rail
+    for (let i = 0; i < 4; i++) box(0.07, 0.015, 0.03, metal, 0, 0.14, -0.1 - i * 0.1);
+    box(0.02, 0.06, 0.04, metal, 0, -0.08, 0.0); // trigger
     box(0.035, 0.045, 0.11, metal, 0, 0.13, -0.57);
     box(0.12, 0.04, 0.18, dark, 0, -0.14, 0.06);
     box(0.08, 0.06, 0.1, accent, 0.09, 0, -0.12);
@@ -82,10 +86,10 @@ export function buildWeaponModel(def: WeaponDef, team: 0 | 1, firstPerson = fals
 
 export function buildClassModel(team: 0 | 1, cls: ClassId) {
   const g = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color: TEAM_COLOR[team] });
-  const skin = new THREE.MeshLambertMaterial({ color: 0xe0b48c });
-  const dark = new THREE.MeshLambertMaterial({ color: 0x3a3028 });
-  const hatM = new THREE.MeshLambertMaterial({ color: CLASSES[cls].hat });
+  const bodyMat = gearMat(TEAM_COLOR[team], "cloth");
+  const skin = gearMat(0xe0b48c, "skin");
+  const dark = gearMat(0x3a3028, "cloth");
+  const hatM = gearMat(CLASSES[cls].hat, "cloth");
   const big = cls === "heavy" ? 1.25 : cls === "scout" || cls === "spy" ? 0.9 : 1;
   const limb = (x: number, y: number, h: number, mat: THREE.Material) => { const pivot = new THREE.Group(); pivot.position.set(x, y, 0); const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.22 * big, h, 0.25), mat); mesh.position.y = -h / 2; mesh.castShadow = true; pivot.add(mesh); g.add(pivot); return pivot; };
   const leftLeg = limb(-0.2 * big, 0.82, 0.78, dark), rightLeg = limb(0.2 * big, 0.82, 0.78, dark);
@@ -94,7 +98,7 @@ export function buildClassModel(team: 0 | 1, cls: ClassId) {
   const head = new THREE.Mesh(new THREE.DodecahedronGeometry(0.25, 1), skin); head.position.y = 1.65;
   const hat = new THREE.Mesh(new THREE.CylinderGeometry(cls === "soldier" ? 0.3 : 0.24, 0.26, cls === "pyro" ? 0.28 : 0.14, cls === "engineer" ? 6 : 10), hatM); hat.position.y = 1.89;
   const leftArm = limb(-0.48 * big, 1.42, 0.62, bodyMat), rightArm = limb(0.48 * big, 1.42, 0.62, bodyMat);
-  const gunMat = new THREE.MeshLambertMaterial({ color: 0x444444 });
+  const gunMat = gearMat(0x444444, "metal");
   const gun = new THREE.Group(); gun.position.set(0.35 * big, 1.1, -0.35);
   for (const m of [torso, belt, head, hat]) { m.castShadow = true; g.add(m); }
   if (cls === "medic") { const pack = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.65, 0.24), hatM); pack.position.set(0, 1.2, 0.34); g.add(pack); }
@@ -114,6 +118,12 @@ export function buildClassModel(team: 0 | 1, cls: ClassId) {
   for (const x of [-0.085, 0.085]) detail(0.045, 0.045, 0.035, dark, x, 1.69, -0.23);
   detail(0.075, 0.07, 0.09, skin, 0, 1.61, -0.25);
   detail(0.09, 0.07, 0.035, hatM, 0, 0.88, -0.27);
+  for (const arm of [leftArm, rightArm]) detail(0.26 * big, 0.12, 0.29, bodyMat, 0, -0.02, 0, arm); // shoulder
+  for (const leg of [leftLeg, rightLeg]) detail(0.24 * big, 0.12, 0.05, dark, 0, -0.38, -0.14, leg); // knee pad
+  detail(0.42 * big, 0.08, 0.32 * big, bodyMat, 0, 1.47, 0); // collar
+  for (const x of [-0.085, 0.085]) detail(0.08, 0.02, 0.03, dark, x, 1.735, -0.235); // brows
+  detail(0.12, 0.025, 0.03, dark, 0, 1.56, -0.245); // mouth
+  for (const x of [-0.2, 0.2]) detail(0.07, 0.11, 0.07, dark, x * big, 0.88, -0.26); // belt pouches
   if (cls === "heavy" || cls === "soldier" || cls === "sniper") {
     const strap = detail(0.1, 0.65, 0.035, dark, -0.12, 1.2, -0.26); strap.rotation.z = -0.4;
     if (cls === "heavy") for (let i = 0; i < 6; i++) detail(0.07, 0.09, 0.06, hatM, -0.22 + i * 0.04, 1.42 - i * 0.08, -0.29);
