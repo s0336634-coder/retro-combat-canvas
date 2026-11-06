@@ -226,6 +226,16 @@ function Index() {
           {hud.buildMode && <div className="pointer-events-none absolute left-1/2 bottom-24 -translate-x-1/2 rounded bg-card/90 px-4 py-1 text-sm font-bold">Placing {hud.buildMode.replace("_", " ")} — {hud.ghostValid ? "click to build" : "invalid spot"}</div>}
           {/* 9. Übercharge active */}
           {hud.uberActive && <div className="pointer-events-none absolute inset-0 uber-vignette" />}
+          {/* New: floating damage number */}
+          {hud.alive && hud.dmgPop > 0 && <div className="pointer-events-none absolute left-1/2 top-1/2 translate-x-6 -translate-y-10 font-mono text-lg font-black text-warning drop-shadow">-{hud.dmgPop}</div>}
+          {/* New: kill confirmation */}
+          {hud.killConfirm && <div className="pointer-events-none absolute left-1/2 top-1/3 -translate-x-1/2 rounded bg-destructive/90 px-4 py-1 text-sm font-black uppercase tracking-wider text-destructive-foreground">Eliminated {hud.killConfirm}</div>}
+          {/* New: damage dealt, FPS, MVP */}
+          <div className="pointer-events-none absolute right-3 top-[164px] rounded bg-card/80 px-3 py-1 text-right font-mono text-xs leading-5">
+            <div>DMG {hud.dmgDealt}</div>
+            <div className="text-muted-foreground">{fps} FPS</div>
+            {hud.board?.[0] && hud.board[0].kills > 0 && <div className={hud.board[0].me ? "font-black text-warning" : ""}>MVP {hud.board[0].me ? "YOU" : hud.board[0].name} ({hud.board[0].kills})</div>}
+          </div>
           {/* 10. Tab scoreboard */}
           {!hud.showBoard && hud.locked && <div className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground">Hold TAB for scoreboard</div>}
           {hud.showBoard && (

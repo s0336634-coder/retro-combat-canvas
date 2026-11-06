@@ -776,7 +776,12 @@ export class Game {
     if (from && from !== t && from.team === t.team) return;
     t.hp -= amount;
     if (from && from !== t) {
-      if (from === this.player) this.hitT = 0.15;
+      if (from === this.player) {
+        this.hitT = 0.15;
+        this.dmgDealt = (this.dmgDealt || 0) + amount;
+        this.dmgPop = (this.dmgPopT > 0 ? this.dmgPop : 0) + amount; this.dmgPopT = 0.8;
+        if (t.hp <= 0) { this.lastKill = t.name; this.lastKillT = 2.2; }
+      }
       t.lastAttacker = from;
       if (t.brain) t.brain.hurtBy(from, this);
       if (t.cls === "spy" && t.disguised && Math.random() < 0.3) { t.disguised = false; this.refreshLook(t); }
@@ -1069,6 +1074,8 @@ export class Game {
     this.fx = this.fx.filter((f) => f.t < f.life);
     if (this.hurtFlash > 0) this.hurtFlash -= dt;
     if (this.hitT > 0) this.hitT -= dt;
+    if (this.dmgPopT > 0) this.dmgPopT -= dt;
+    if (this.lastKillT > 0) this.lastKillT -= dt;
   }
 
   updateVisuals(dt: number) {
@@ -1224,6 +1231,8 @@ export class Game {
       healHp: p.healTarget ? p.healTarget.hp / p.healTarget.maxHp : null,
       aliveCounts: [this.actors.filter((a) => a.team === 0 && a.alive).length, this.actors.filter((a) => a.team === 1 && a.alive).length],
       myBuildings: this.buildings.filter((b) => b.owner === p).map((b) => ({ type: b.type, level: b.level, hp: Math.ceil((b.hp / b.maxHp) * 100) })),
+      dmgDealt: Math.round(this.dmgDealt || 0), dmgPop: this.dmgPopT > 0 ? Math.round(this.dmgPop) : 0,
+      killConfirm: this.lastKillT > 0 ? this.lastKill : null,
       hit: this.hitT > 0, showBoard: this.keys.has("Tab"),
       board: this.actors.map((a) => ({ name: a.name, team: a.team, cls: a.cls, kills: a.kills, deaths: a.deaths, alive: a.alive, me: a === p })).sort((a, b) => b.kills - a.kills),
     };
