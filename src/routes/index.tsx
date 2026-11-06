@@ -37,6 +37,14 @@ function Index() {
   
   const flagText = (flag: any) => flag.state === "AT_BASE" ? "SECURE" : flag.state === "DROPPED" ? `DROPPED ${flag.returnT}s` : `TAKEN · ${flag.carrier}`;
 
+  const [fps, setFps] = useState(0);
+  useEffect(() => {
+    let frames = 0, raf = 0, last = performance.now();
+    const loop = (now: number) => { frames++; if (now - last >= 1000) { setFps(frames); frames = 0; last = now; } raf = requestAnimationFrame(loop); };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
   useEffect(() => {
     if (!cls || game.current) return;
     let alive = true;
