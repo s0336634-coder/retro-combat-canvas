@@ -268,3 +268,44 @@ export function mapBoxMaterial(color: number, w: number, h: number, d: number): 
   }
   return m;
 }
+
+// Neutral (near-white) detail textures for weapons and characters. Material
+// color tints them, so team/class colors stay intact.
+const GEAR: Record<string, Painter> = {
+  metal: (ctx, rand, s) => {
+    ctx.fillStyle = "#e6e6e6"; ctx.fillRect(0, 0, s, s);
+    for (let i = 0; i < 30; i++) { ctx.fillStyle = `rgba(${rand() < 0.5 ? "255,255,255" : "0,0,0"},${0.05 + rand() * 0.08})`; ctx.fillRect(0, rand() * s, s, 1); }
+    for (let i = 0; i < 6; i++) { ctx.fillStyle = "rgba(90,60,30,0.15)"; ctx.fillRect(rand() * s, rand() * s, 2 + rand() * 4, 1 + rand() * 3); }
+  },
+  wood: (ctx, rand, s) => {
+    ctx.fillStyle = "#f0e2cc"; ctx.fillRect(0, 0, s, s);
+    for (let i = 0; i < 14; i++) { ctx.strokeStyle = `rgba(80,45,15,${0.15 + rand() * 0.2})`; const y = rand() * s; ctx.beginPath(); ctx.moveTo(0, y); ctx.bezierCurveTo(s * 0.3, y + rand() * 6 - 3, s * 0.7, y + rand() * 6 - 3, s, y); ctx.stroke(); }
+  },
+  paint: (ctx, rand, s) => {
+    ctx.fillStyle = "#f2f2f2"; ctx.fillRect(0, 0, s, s);
+    ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.fillRect(0, s / 2, s, 1);
+    for (let i = 0; i < 12; i++) { ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.fillRect(rand() * s, rand() * s, 1 + rand() * 5, 1); }
+    noiseOverlay(ctx, rand, s, 0.04);
+  },
+  cloth: (ctx, rand, s) => {
+    ctx.fillStyle = "#efefef"; ctx.fillRect(0, 0, s, s);
+    for (let i = 0; i < s; i += 2) { ctx.fillStyle = `rgba(0,0,0,${0.03 + rand() * 0.04})`; ctx.fillRect(i, 0, 1, s); ctx.fillRect(0, i, s, 1); }
+    ctx.fillStyle = "rgba(0,0,0,0.2)"; ctx.fillRect(s / 2, 0, 1, s);
+  },
+  skin: (ctx, rand, s) => { ctx.fillStyle = "#f6f6f6"; ctx.fillRect(0, 0, s, s); noiseOverlay(ctx, rand, s, 0.03); },
+};
+const gearCache = new Map<string, THREE.CanvasTexture>();
+export function gearTexture(kind: keyof typeof GEAR): THREE.CanvasTexture | null {
+  if (typeof document === "undefined") return null;
+  let t = gearCache.get(kind);
+  if (t) return t;
+  const c = makeCanvas(64);
+  GEAR[kind](c.getContext("2d")!, rng(kind.length * 7919), 64);
+  t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.NearestFilter; t.colorSpace = THREE.SRGBColorSpace;
+  gearCache.set(kind, t);
+  return t;
+}
+export function gearMat(color: number, kind: keyof typeof GEAR) {
+  return new THREE.MeshLambertMaterial({ color, map: gearTexture(kind) });
+}
