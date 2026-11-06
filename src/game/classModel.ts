@@ -91,11 +91,18 @@ export function buildClassModel(team: 0 | 1, cls: ClassId) {
   const dark = gearMat(0x3a3028, "cloth");
   const hatM = gearMat(CLASSES[cls].hat, "cloth");
   const big = cls === "heavy" ? 1.25 : cls === "scout" || cls === "spy" ? 0.9 : 1;
-  const limb = (x: number, y: number, h: number, mat: THREE.Material) => { const pivot = new THREE.Group(); pivot.position.set(x, y, 0); const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.22 * big, h, 0.25), mat); mesh.position.y = -h / 2; mesh.castShadow = true; pivot.add(mesh); g.add(pivot); return pivot; };
+  const limb = (x: number, y: number, h: number, mat: THREE.Material) => { const pivot = new THREE.Group(); pivot.position.set(x, y, 0); const r = 0.115 * big; const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(0.05, h - r * 2), 3, 8), mat); mesh.position.y = -h / 2; mesh.scale.z = 1.1; mesh.castShadow = true; pivot.add(mesh); g.add(pivot); return pivot; };
   const leftLeg = limb(-0.2 * big, 0.82, 0.78, dark), rightLeg = limb(0.2 * big, 0.82, 0.78, dark);
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.76 * big, cls === "heavy" ? 0.78 : 0.68, 0.48 * big), bodyMat); torso.position.y = 1.15;
+  const torsoH = cls === "heavy" ? 0.78 : 0.68;
+  // Tapered four-sided chest: broad shoulders narrowing to the waist reads far less blocky than a cube.
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.54 * big, 0.4 * big, torsoH, 4, 1), bodyMat); torso.rotation.y = Math.PI / 4; torso.scale.set(1, 1, 0.62); torso.position.y = 1.15;
+  if (cls === "heavy") { const gut = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 8), bodyMat); gut.scale.set(1.15, 0.9, 0.75); gut.position.set(0, 1.02, -0.06); gut.castShadow = true; g.add(gut); }
+  const hips = new THREE.Mesh(new THREE.BoxGeometry(0.58 * big, 0.2, 0.36 * big), dark); hips.position.y = 0.8; hips.castShadow = true; g.add(hips);
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.14, 8), skin); neck.position.y = 1.52; g.add(neck);
+  const jaw = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), skin); jaw.scale.set(1, 0.7, 1); jaw.position.set(0, 1.56, -0.04); g.add(jaw);
+  for (const x of [-0.25, 0.25]) { const ear = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 4), skin); ear.scale.set(0.5, 1, 0.8); ear.position.set(x, 1.65, 0); g.add(ear); }
   const belt = new THREE.Mesh(new THREE.BoxGeometry(0.79 * big, 0.12, 0.5 * big), dark); belt.position.y = 0.88;
-  const head = new THREE.Mesh(new THREE.DodecahedronGeometry(0.25, 1), skin); head.position.y = 1.65;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 14, 10), skin); head.scale.set(0.95, 1.05, 1); head.position.y = 1.66;
   const hat = new THREE.Mesh(new THREE.CylinderGeometry(cls === "soldier" ? 0.3 : 0.24, 0.26, cls === "pyro" ? 0.28 : 0.14, cls === "engineer" ? 6 : 10), hatM); hat.position.y = 1.89;
   const leftArm = limb(-0.48 * big, 1.42, 0.62, bodyMat), rightArm = limb(0.48 * big, 1.42, 0.62, bodyMat);
   const gunMat = gearMat(0x444444, "metal");
@@ -113,9 +120,10 @@ export function buildClassModel(team: 0 | 1, cls: ClassId) {
   for (const leg of [leftLeg, rightLeg]) detail(0.26 * big, 0.16, 0.37, dark, 0, -0.7, -0.06, leg);
   for (const arm of [leftArm, rightArm]) {
     detail(0.23 * big, 0.1, 0.26, dark, 0, -0.44, 0, arm);
-    detail(0.2 * big, 0.18, 0.23, cls === "pyro" ? dark : skin, 0, -0.61, 0, arm);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.11 * big, 8, 6), cls === "pyro" ? dark : skin); hand.scale.set(1, 1.1, 1.15); hand.position.y = -0.64; hand.castShadow = true; arm.add(hand);
   }
-  for (const x of [-0.085, 0.085]) detail(0.045, 0.045, 0.035, dark, x, 1.69, -0.23);
+  const eyeW = gearMat(0xf4efe6, "paint");
+  for (const x of [-0.085, 0.085]) { if (cls !== "pyro") detail(0.07, 0.055, 0.03, eyeW, x, 1.69, -0.225); detail(0.035, 0.04, 0.03, dark, x, 1.69, -0.24); }
   detail(0.075, 0.07, 0.09, skin, 0, 1.61, -0.25);
   detail(0.09, 0.07, 0.035, hatM, 0, 0.88, -0.27);
   for (const arm of [leftArm, rightArm]) detail(0.26 * big, 0.12, 0.29, bodyMat, 0, -0.02, 0, arm); // shoulder
