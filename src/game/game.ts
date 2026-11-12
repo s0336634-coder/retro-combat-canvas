@@ -908,6 +908,7 @@ export class Game {
     return { w: 0.6, h: 0.25 };
   }
   canBuild(a: Actor, type: BldType, pos: THREE.Vector3) {
+    if (this.matchMode === 'melee') return false;
     if (a.metal < BUILD_COST[type]) return false;
     if (this.buildings.some((b) => b.owner === a && b.type === type)) return false;
     if (this.world.overlaps(pos.x, pos.y + 0.05, pos.z, 1.1, 0.5)) return false;
