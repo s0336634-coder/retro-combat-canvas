@@ -17,3 +17,6 @@
 - [x] Verify animation curves, desktop/mobile menus, and the menu-to-battle/class-switch flow.
 - [x] Add bot difficulty presets for aim, reactions, and objective pressure.
 - [x] Add pre-match and in-match difficulty selection and verify live behavior.
+- [x] Add ten new conveniences: wheel cycling, last-weapon swap, empty-weapon fallback, toggle crouch, invert aim, field of view, weapon-bob control, HUD sizing, crosshair styles, and minimap visibility.
+- [x] Add ten new features: tactical pings, Medic calls, intel handoff, assists, medals, match challenges, combat journal, match restart, match mutators, and teammate spectating.
+- [x] Verify new rules, match controls, gameplay actions, and desktop/mobile layout.

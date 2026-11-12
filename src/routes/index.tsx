@@ -6,6 +6,9 @@ import { ClassSelection } from "@/components/ClassSelection";
 import { Button } from "@/components/ui/button";
 import { Expand, Users, Settings2, Play } from "lucide-react";
 import { BotDifficultySelector } from '@/components/BotDifficultySelector';
+import { MatchDesk } from '@/components/MatchDesk';
+import { DEFAULT_PREFERENCES, type Preferences } from '@/game/extras';
+import { ClipboardList, MapPin, Heart, Flag } from 'lucide-react';
 import type { BotDifficulty } from '@/game/difficulty';
 
 export const Route = createFileRoute("/")({
@@ -30,6 +33,9 @@ function Index() {
   const [cls, setCls] = useState<ClassId | null>(null);
   const [classMenu, setClassMenu] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [desk, setDesk] = useState(false);
+  const [preferences, setPreferences] = useState<Preferences>({ ...DEFAULT_PREFERENCES });
+  const preferencesRef = useRef(preferences);
   const [sensitivity, setSensitivity] = useState(1);
   const [difficulty, setDifficulty] = useState<BotDifficulty>('normal');
   const difficultyRef = useRef<BotDifficulty>('normal');
@@ -53,6 +59,7 @@ function Index() {
       const g = new Game(canvas.current, mini.current, 0, cls, difficultyRef.current);
       game.current = g;
       g.sensitivity = sensitivity;
+      g.preferences = { ...preferencesRef.current };
       if (import.meta.env.DEV) (window as any).__game = g;
       g.start();
       g.lock();
@@ -80,6 +87,10 @@ function Index() {
     setDifficulty(next);
     game.current?.setBotDifficulty(next);
   };
+  const changePreferences = (next: Preferences) => {
+    preferencesRef.current = next; setPreferences(next);
+    if (game.current) game.current.preferences = { ...next };
+  };
   const fullscreen = () => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     else document.documentElement.requestFullscreen?.().catch(() => {});
@@ -88,22 +99,27 @@ function Index() {
   return (
     <div className="game-shell fixed inset-0 bg-background text-foreground select-none overflow-hidden font-sans">
       <canvas ref={canvas} className="h-full w-full" onClick={() => game.current?.lock()} />
-      <canvas ref={mini} width={320} height={120} className="hud-minimap absolute right-3 top-3 rounded border border-border/40 shadow-lg" />
+      <canvas ref={mini} width={320} height={120} className={cn(!preferences.minimap && "hidden", "hud-minimap absolute right-3 top-3 rounded border border-border/40 shadow-lg")} />
       
       {(!cls || classMenu) && <ClassSelection onSelect={switchClass} current={cls ?? undefined} difficulty={difficulty} onDifficultyChange={changeDifficulty} onClose={cls ? () => { setClassMenu(false); game.current?.lock(); } : undefined} />}
 
       {hud && (
         <>
+          <div className={cn("hud-layer absolute inset-0 pointer-events-none", preferences.hudScale < 1 ? "hud-compact" : preferences.hudScale > 1 ? "hud-large" : "")} >
           {/* Hit Flash & Damage Vignette */}
           {hud.hurt && <div className="pointer-events-none absolute inset-0 animate-pulse bg-destructive/20 damage-vignette" />}
           
           {/* Crosshair with Hit Marker */}
           <div className="pointer-events-none absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2" aria-label="Crosshair">
             <div className={cn("absolute inset-0 flex items-center justify-center transition-colors duration-75", hud.hit ? "text-destructive scale-125" : "text-foreground")}>
+              {preferences.crosshair === "cross" && <>
               <span className="absolute h-0.5 w-2 -translate-x-2 bg-current" />
               <span className="absolute h-0.5 w-2 translate-x-2 bg-current" />
               <span className="absolute h-2 w-0.5 -translate-y-2 bg-current" />
               <span className="absolute h-2 w-0.5 translate-y-2 bg-current" />
+              </>}
+              {preferences.crosshair === "dot" && <span className="h-1 w-1 rounded-full bg-current" />}
+              {preferences.crosshair === "ring" && <span className="h-4 w-4 rounded-full border-2 border-current" />}
             </div>
           </div>
 
@@ -253,7 +269,7 @@ function Index() {
                   <div className={cn("mb-2 font-black", t === 0 ? "text-team-blu" : "text-team-red")}>{t === 0 ? "BLU" : "RED"} — {hud.scores[t]}</div>
                   {hud.board.filter((b: any) => b.team === t).map((b: any, i: number) => (
                     <div key={i} className={cn("flex justify-between py-0.5", b.me && "text-primary font-bold", !b.alive && "opacity-50")}>
-                      <span>{b.name} ({CLASSES[b.cls as ClassId].name})</span><span>{b.kills}/{b.deaths}</span>
+                      <span>{b.name} ({CLASSES[b.cls as ClassId].name})</span><span>{b.kills}/{b.deaths} · {b.assists} A</span>
                     </div>
                   ))}
                 </div>
@@ -262,8 +278,20 @@ function Index() {
           )}
           {hud.winner != null && hud.winner !== "" && <div className="pointer-events-none absolute left-1/2 top-1/4 -translate-x-1/2 text-5xl font-black text-primary">{hud.winner === 0 ? "BLU" : hud.winner === 1 ? "RED" : hud.winner} WINS!</div>}
 
+          {hud.extras?.ping && hud.alive && <div className="absolute left-1/2 top-1/2 text-primary" style={{ transform: `translate(-50%, -50%) rotate(${hud.extras.ping.angle}rad) translateY(-130px)` }}><MapPin className="size-5" /></div>}
+          {hud.extras?.ping && <div className="hud-ping absolute left-1/2 top-36 -translate-x-1/2 text-center text-xs font-bold text-primary">{hud.extras.ping.label} · {hud.extras.ping.distance}m · {hud.extras.ping.seconds}s</div>}
+          {hud.extras?.medicCall && <div className="absolute bottom-48 left-6 text-xs font-bold text-health">MEDIC REQUEST ACTIVE</div>}
+          {!hud.alive && hud.extras?.spectator && <div className="absolute bottom-48 left-1/2 -translate-x-1/2 text-sm text-team-blu">SPECTATING {hud.extras.spectator}</div>}
+          <div className="hud-actions pointer-events-auto absolute bottom-8 left-1/2 flex -translate-x-1/2 gap-1">
+            <Button size="icon" variant="outline" title="Ping (T)" aria-label="Tactical ping" disabled={!hud.alive} onClick={() => game.current?.tacticalPing()}><MapPin /></Button>
+            <Button size="icon" variant="outline" title="Call Medic (E)" aria-label="Call Medic" disabled={!hud.alive} onClick={() => game.current?.callMedic()}><Heart /></Button>
+            <Button size="icon" variant="outline" title="Drop intel (G)" aria-label="Drop intel" disabled={!hud.carrying} onClick={() => game.current?.dropIntel()}><Flag /></Button>
+            <Button size="icon" variant="outline" title="Match desk" aria-label="Open match desk" onClick={() => { document.exitPointerLock(); setDesk(true); }}><ClipboardList /></Button>
+          </div>
           {hud.teammate && hud.alive && <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 translate-y-12 text-center text-xs text-team-blu"><div className="font-bold">{hud.teammate.name}</div><div className="font-mono">{hud.teammate.hp} / {hud.teammate.maxHp} HP</div></div>}
-          {!hud.locked && !classMenu && (
+          </div>
+          {desk && hud.extras && <MatchDesk game={game.current} extras={hud.extras} preferences={preferences} onPreferences={changePreferences} onClose={() => setDesk(false)} />}
+          {!hud.locked && !classMenu && !desk && (
 
             <div className="absolute inset-0 flex items-center justify-center bg-overlay/60 backdrop-blur-[2px]">
               <div className="flex w-72 flex-col gap-3 border border-border bg-card p-6">

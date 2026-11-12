@@ -15,3 +15,5 @@
 - Use shared class-selection UI for initial deployment and in-match switching so previews and loadouts remain consistent.
 - Dev builds expose `window.__game` (live Game instance) and `sim(seconds)` for fixed-step checks; the game canvas sets `data-scene-ready` after rendering.
 - Keep bot difficulty tuning in a renderer-independent module shared by AI and match controls; apply presets to both teams without changing player stats or restarting the match.
+- Keep match reward thresholds, mutator definitions, and weapon-selection helpers in renderer-independent `extras.ts` with tests so match additions remain verifiable without WebGL.
+- Match preferences are session-only and the shared Match Desk reads live game statistics; explicit match restarts reset rewards and temporary combat state to prevent stale results.

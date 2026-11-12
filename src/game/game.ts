@@ -8,6 +8,7 @@ import { buildClassModel, buildWeaponModel, TEAM_COLOR } from "./classModel";
 import { botThink, makeBrain, type Brain } from "./ai";
 import { MOTION, weaponPose, reloadProgress } from "./animation";
 import { botReactionTime, type BotDifficulty } from './difficulty';
+import { DEFAULT_PREFERENCES, MATCH_MODES, cycleSlot, availableSlot, assistEligible, freshStats, earnedMedals } from './extras';
 
 export type Team = 0 | 1;
 export const TEAM_NAME = ["BLU", "RED"];
@@ -64,7 +65,19 @@ export class Game {
   message = ""; messageT = 0;
   winner: Team | null = null; winT = 0;
   time = 0;
-  player!: Actor;
+  declare player: Actor;
+  preferences = { ...DEFAULT_PREFERENCES };
+  matchMode = "classic";
+  stats = freshStats();
+  journal: { text: string; time: number }[] = [];
+  contributors = new Map<number, Map<number, number>>();
+  ping = null;
+  medicCall = null;
+  nextPing = 0; nextCall = 0;
+  intelLock = new Map<number, number>();
+  spectateId = null;
+  previousSlot = 1;
+  crouchLatched = false;
   keys = new Set<string>();
   mouse = { l: false, r: false };
   locked = false;
@@ -218,7 +231,8 @@ export class Game {
     a.input.yaw = a.yaw; a.input.pitch = 0;
     a.hp = a.maxHp = c.hp;
     a.weapons = c.weapons.map((def) => ({ def, clip: def.clip, reserve: def.reserve }));
-    a.slot = 0; a.input.slot = 0;
+    a.slot = 0; a.input.slot = 0; a.reloadT = 0; a.nextFire = 0; a.lastAttacker = null;
+    if (!a.isBot) { this.previousSlot = 1; this.crouchLatched = false; this.spectateId = null; }
     a.alive = true; a.uber = a.cls === "medic" ? a.uber * 0 : 0; a.uberT = 0; a.invulnT = 0;
     a.metal = 200; a.cloaked = false; a.cloak = 1; a.disguised = false; a.scoped = false; a.charge = 0; a.revT = 0;
     a.burnT = 0; a.air = 12; a.healTarget = null; a.buildMode = null; a.carrying = false;
@@ -254,6 +268,46 @@ export class Game {
     }
   }
 
+  logEvent(text: string) { this.journal.unshift({ text, time: this.time }); this.journal.length = Math.min(40, this.journal.length); }
+  tacticalPing() {
+    if (!this.player.alive || this.time < this.nextPing) return;
+    const eye = this.eye(this.player), dir = this.dirOf(this.player.yaw, this.player.pitch);
+    const hit = this.trace(this.player, eye, dir, 60);
+    this.ping = { pos: eye.addScaledVector(dir, hit.t), until: this.time + 8, label: hit.actor ? hit.actor.name : hit.bld ? 'Enemy building' : 'Rally point' };
+    this.nextPing = this.time + 2;
+    this.burst(this.ping.pos, TEAM_COLOR[this.player.team], 0.5);
+    this.logEvent(`Ping: ${this.ping.label}`);
+  }
+  callMedic() {
+    if (!this.player.alive || this.time < this.nextCall) return;
+    this.medicCall = { actor: this.player, until: this.time + 8 };
+    this.nextCall = this.time + 5;
+    this.flash('Medic requested'); this.logEvent('Called for a Medic');
+    for (const a of this.actors) if (a.team === this.player.team && a.cls === 'medic' && a.brain) a.brain.thinkT = 0;
+  }
+  dropIntel() {
+    const f = this.flags.find(f => f.carrier === this.player);
+    if (!f || !this.player.alive) return;
+    f.state = 'DROPPED'; f.carrier = null; f.pos.copy(this.player.pos); f.returnT = FLAG_RETURN;
+    this.player.carrying = false; this.intelLock.set(this.player.id, this.time + 2);
+    this.flash('Intel dropped for a teammate'); this.logEvent('Handed off the intelligence');
+  }
+  cycleSpectator() {
+    const allies = this.actors.filter(a => a !== this.player && a.team === this.player.team && a.alive);
+    if (!allies.length) { this.spectateId = null; return; }
+    const index = allies.findIndex(a => a.id === this.spectateId);
+    this.spectateId = allies[(index + 1) % allies.length].id;
+  }
+  restartMatch(mode = this.matchMode) {
+    this.matchMode = mode; this.stats = freshStats(); this.journal = []; this.contributors.clear();
+    this.time = 0; this.dmgDealt = 0; this.dmgPopT = 0; this.lastKillT = 0;
+    this.ping = null; this.medicCall = null; this.nextPing = 0; this.nextCall = 0;
+    this.intelLock.clear(); this.spectateId = null; this.killfeed = [];
+    for (const p of [...this.projectiles]) this.killProj(p); this.projectiles = [];
+    for (const a of this.actors) { a.kills = 0; a.deaths = 0; a.streak = 0; a.assists = 0; a.lastAttacker = null; }
+    this.resetRound(); this.logEvent(`Match started: ${MATCH_MODES[mode].label}`);
+  }
+
   // ---------------- input ----------------
   bindInput() {
     const kd = (e: KeyboardEvent) => {
@@ -269,7 +323,12 @@ export class Game {
         }
         if (p.cls === "spy" && n === 4) { p.disguised = !p.disguised; this.refreshLook(p); this.flash(p.disguised ? "Disguised as enemy" : "Disguise removed"); }
       }
-      if (e.code === "KeyQ") { p.input.slot = p.slot === 0 ? 1 : 0; }
+      if (e.code === "KeyQ" && !e.repeat) p.input.slot = this.previousSlot;
+      if (e.code === "KeyC" && !e.repeat && this.preferences.toggleCrouch) this.crouchLatched = !this.crouchLatched;
+      if (e.code === "KeyT" && !e.repeat) this.tacticalPing();
+      if (e.code === "KeyE" && !e.repeat) this.callMedic();
+      if (e.code === "KeyG" && !e.repeat) this.dropIntel();
+      if (e.code === "KeyN" && !e.repeat && !p.alive) this.cycleSpectator();
       if (e.code === "Space" || e.code === "Tab") e.preventDefault();
     };
     const ku = (e: KeyboardEvent) => this.keys.delete(e.code);
@@ -279,7 +338,7 @@ export class Game {
       this.aimSway.x = Math.max(-0.035, Math.min(0.035, e.movementX * 0.001));
       this.aimSway.y = Math.max(-0.025, Math.min(0.025, e.movementY * 0.001));
       this.player.input.yaw -= e.movementX * s;
-      this.player.input.pitch = Math.max(-1.5, Math.min(1.5, this.player.input.pitch - e.movementY * s));
+      this.player.input.pitch = Math.max(-1.5, Math.min(1.5, this.player.input.pitch - e.movementY * s * (this.preferences.invertY ? -1 : 1)));
     };
     const md = (e: MouseEvent) => {
       if (!this.locked) return;
@@ -293,10 +352,14 @@ export class Game {
     const ctx = (e: Event) => e.preventDefault();
     const plc = () => { this.locked = document.pointerLockElement === this.canvas; if (!this.locked) { this.mouse.l = this.mouse.r = false; this.keys.clear(); } };
     const rs = () => this.resize();
+    const wheel = (e: WheelEvent) => { if (!this.locked || e.deltaY === 0) return; e.preventDefault(); this.player.input.slot = cycleSlot(this.player.input.slot, e.deltaY, this.player.weapons.length); this.player.buildMode = null; };
+    const blur = () => { this.keys.clear(); this.mouse.l = this.mouse.r = false; };
+    window.addEventListener('blur', blur); this.canvas.addEventListener('wheel', wheel, { passive: false });
     window.addEventListener("keydown", kd); window.addEventListener("keyup", ku);
     document.addEventListener("mousemove", mm); document.addEventListener("mousedown", md); document.addEventListener("mouseup", mu);
     document.addEventListener("contextmenu", ctx); document.addEventListener("pointerlockchange", plc); window.addEventListener("resize", rs);
     this.disposers.push(() => {
+      window.removeEventListener('blur', blur); this.canvas.removeEventListener('wheel', wheel);
       window.removeEventListener("keydown", kd); window.removeEventListener("keyup", ku);
       document.removeEventListener("mousemove", mm); document.removeEventListener("mousedown", md); document.removeEventListener("mouseup", mu);
       document.removeEventListener("contextmenu", ctx); document.removeEventListener("pointerlockchange", plc); window.removeEventListener("resize", rs);
@@ -388,7 +451,7 @@ export class Game {
     let wx = fx * f + rx * r, wz = fz * f + rz * r;
     const L = Math.hypot(wx, wz); if (L > 0) { wx /= L; wz /= L; }
     i.wx = wx; i.wz = wz;
-    i.jump = k.has("Space"); i.crouch = k.has("KeyC") || k.has("ControlLeft");
+    i.jump = k.has("Space"); i.crouch = (this.preferences.toggleCrouch ? this.crouchLatched : k.has("KeyC")) || k.has("ControlLeft");
     i.fire = this.mouse.l; i.alt = this.mouse.r; i.reload = k.has("KeyR");
   }
 
@@ -410,6 +473,11 @@ export class Game {
     if (this.inResupply(a)) this.resupplyActor(a);
 
     // weapon switch
+    if (this.matchMode === 'melee') inp.slot = a.weapons.findIndex(w => ['melee', 'knife', 'wrench'].includes(w.def.kind));
+    if (a === this.player && this.preferences.emptySwitch && inp.fire && a.weapons[a.slot].def.clip > 0 && a.weapons[a.slot].clip === 0 && a.weapons[a.slot].reserve === 0) {
+      const next = availableSlot(a.weapons, a.slot); if (next >= 0) inp.slot = next;
+    }
+    if (a === this.player && inp.slot !== a.slot) this.previousSlot = a.slot;
     if (inp.slot !== a.slot && inp.slot < a.weapons.length) { a.slot = inp.slot; a.nextFire = Math.max(a.nextFire, this.time + 0.3); a.reloadT = 0; a.scoped = false; a.revT = 0; }
 
     // movement
@@ -435,13 +503,13 @@ export class Game {
     }
     a.jumpHeld = inp.jump;
     if (a.inWater) {
-      a.vel.y -= G * 0.2 * dt; a.vel.y *= 1 - Math.min(1, 2 * dt);
+      a.vel.y -= G * MATCH_MODES[this.matchMode].gravity * 0.2 * dt; a.vel.y *= 1 - Math.min(1, 2 * dt);
       if (inp.jump) a.vel.y = 3.2;
       if (headY < WATER_Y) {
         a.air -= dt;
         if (a.air < 0) { a.drownTick -= dt; if (a.drownTick <= 0) { a.drownTick = 1; this.damage(a, 5, null, "drowning"); if (!a.alive) return; } }
       } else a.air = Math.min(12, a.air + dt * 3);
-    } else { a.vel.y -= G * dt; a.air = Math.min(12, a.air + dt * 3); }
+    } else { a.vel.y -= G * MATCH_MODES[this.matchMode].gravity * dt; a.air = Math.min(12, a.air + dt * 3); }
     this.moveBody(a, dt);
     if (a.pos.y < -30) this.damage(a, 9999, null, "fell");
   }
@@ -663,7 +731,9 @@ export class Game {
     a.healTarget = t;
     if (!t) return;
     const max = t.maxHp * 1.5;
+    const before = t.hp;
     if (t.hp < max) t.hp = Math.min(max, t.hp + (t.hp < t.maxHp ? 30 : 12) * dt);
+    if (a === this.player) this.stats.healing += Math.max(0, t.hp - before);
     t.burnT = 0;
     if (a.uberT <= 0) a.uber = Math.min(1, a.uber + dt / (t.hp < t.maxHp ? 32 : 60));
   }
@@ -774,10 +844,17 @@ export class Game {
   damage(t: Actor, amount: number, from: Actor | null, weapon: string) {
     if (!t.alive || this.isInvuln(t) || amount <= 0) return;
     if (from && from !== t && from.team === t.team) return;
+    const actualDamage = Math.min(t.hp, amount);
     t.hp -= amount;
+    if (from && from !== t) {
+      let hits = this.contributors.get(t.id);
+      if (!hits) { hits = new Map(); this.contributors.set(t.id, hits); }
+      hits.set(from.id, this.time);
+    }
     if (from && from !== t) {
       if (from === this.player) {
         this.hitT = 0.15;
+        this.stats.damage += actualDamage;
         this.dmgDealt = (this.dmgDealt || 0) + amount;
         this.dmgPop = (this.dmgPopT > 0 ? this.dmgPop : 0) + amount; this.dmgPopT = 0.8;
         if (t.hp <= 0) { this.lastKill = t.name; this.lastKillT = 2.2; }
@@ -801,6 +878,16 @@ export class Game {
   hurtFlash = 0;
 
   kill(t: Actor, by: Actor | null, weapon: string) {
+    const hits = this.contributors.get(t.id);
+    if (by && hits) for (const [id, hitTime] of hits) {
+      const helper = this.actors.find(a => a.id === id);
+      if (!helper || helper.team !== by.team || !assistEligible(hitTime, this.time, id, by.id, t.id)) continue;
+      helper.assists = (helper.assists ?? 0) + 1;
+      if (helper === this.player) { this.stats.assists++; this.logEvent(`Assist on ${t.name}`); }
+    }
+    this.contributors.delete(t.id);
+    if (by === this.player) { this.stats.kills++; this.logEvent(`Eliminated ${t.name} · ${weapon}`); }
+    if (t === this.player) { this.logEvent(`Killed by ${by?.name ?? weapon}`); this.spectateId = by?.team === t.team ? by.id : null; }
     t.alive = false; t.hp = 0; t.deaths++;
     t.respawnT = RESPAWN;
     t.mesh.visible = false;
@@ -821,6 +908,7 @@ export class Game {
     return { w: 0.6, h: 0.25 };
   }
   canBuild(a: Actor, type: BldType, pos: THREE.Vector3) {
+    if (this.matchMode === 'melee') return false;
     if (a.metal < BUILD_COST[type]) return false;
     if (this.buildings.some((b) => b.owner === a && b.type === type)) return false;
     if (this.world.overlaps(pos.x, pos.y + 0.05, pos.z, 1.1, 0.5)) return false;
@@ -978,6 +1066,7 @@ export class Game {
         const own = this.flags[c.team];
         if (own.state === "AT_BASE" && c.pos.distanceTo(own.home) < 3.5) {
           this.scores[c.team]++;
+          if (c === this.player) { this.stats.captures++; this.logEvent('Captured enemy intelligence'); }
           this.feed(`${c.name} captured the ${TEAM_NAME[f.team]} intel!`, c.team);
           this.flash(`${TEAM_NAME[c.team]} team captured the intelligence!`);
           c.carrying = false; this.returnFlag(f);
@@ -990,7 +1079,7 @@ export class Game {
         if (f.returnT <= 0) { this.returnFlag(f); this.feed(`${TEAM_NAME[f.team]} intel returned`, f.team); continue; }
       }
       for (const a of this.actors) {
-        if (!a.alive || this.winner !== null) continue;
+        if (!a.alive || this.winner !== null || (this.intelLock.get(a.id) ?? 0) > this.time) continue;
         if (Math.hypot(a.pos.x - f.pos.x, a.pos.z - f.pos.z) > 2 || Math.abs(a.pos.y - f.pos.y) > 2) continue;
         if (a.team === enemy && !this.isInvuln(a)) {
           f.state = "CARRIED"; f.carrier = a; a.carrying = true;
@@ -999,6 +1088,7 @@ export class Game {
           if (a === this.player) this.flash("You have the enemy intelligence! Return it to your base!");
           break;
         } else if (a.team === f.team && f.state === "DROPPED") {
+          if (a === this.player) { this.stats.returns++; this.logEvent('Recovered friendly intelligence'); }
           this.returnFlag(f); this.feed(`${a.name} returned the ${TEAM_NAME[f.team]} intel`, a.team); break;
         }
       }
@@ -1128,11 +1218,14 @@ export class Game {
     if (p.alive) {
       this.camera.position.copy(this.eye(p));
       this.camera.rotation.set(p.pitch, p.yaw, 0);
+    } else if (this.spectateId !== null && this.actors.some(a => a.id === this.spectateId && a.alive)) {
+      const target = this.actors.find(a => a.id === this.spectateId);
+      if (target) { this.camera.position.copy(this.eye(target)); this.camera.rotation.set(target.pitch, target.yaw, 0); }
     } else {
       this.camera.position.lerp(p.pos.clone().add(new THREE.Vector3(0, 6, 0)), dt * 2);
       this.camera.rotation.x += (-1.2 - this.camera.rotation.x) * dt * 2;
     }
-    const fov = p.alive && p.scoped ? 20 : 80;
+    const fov = p.alive && p.scoped ? 20 : this.preferences.fov;
     if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     this.viewmodel.visible = p.alive && !p.scoped;
     const vdef = p.weapons[p.slot]?.def;
@@ -1141,7 +1234,7 @@ export class Game {
       const meleeSwing = ["melee", "knife", "wrench"].includes(vdef.kind);
       const reload = p.reloadT > 0 ? reloadProgress(p.reloadT, vdef.reload ?? 0) : 0;
       const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const pose = weaponPose(p.weaponAnim, reload, meleeSwing, p.onGround ? Math.hypot(p.vel.x, p.vel.z) : 0, this.drawT, !reduced);
+      const pose = weaponPose(p.weaponAnim, reload, meleeSwing, p.onGround ? Math.hypot(p.vel.x, p.vel.z) : 0, this.drawT, !reduced && this.preferences.weaponBob);
       this.aimSway.x *= Math.exp(-MOTION.swayDamping * dt); this.aimSway.y *= Math.exp(-MOTION.swayDamping * dt);
       this.viewmodel.position.set(0.32 + pose.x - this.aimSway.x, -0.28 + pose.y + this.aimSway.y, -0.7 + pose.z);
       this.viewmodel.rotation.set(pose.rx, pose.ry + this.aimSway.x, pose.rz);
@@ -1195,6 +1288,9 @@ export class Game {
       ctx.fillStyle = f.team === 0 ? "#4f86b3" : "#c0453a"; ctx.strokeStyle = "#fff";
       ctx.fillRect(X(f.pos.x) - 4, Z(f.pos.z) - 4, 8, 8); ctx.strokeRect(X(f.pos.x) - 4, Z(f.pos.z) - 4, 8, 8);
     }
+    if (this.ping && this.ping.until > this.time) {
+      ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X(this.ping.pos.x), Z(this.ping.pos.z), 6, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1;
+    }
     if (p.alive) {
       ctx.strokeStyle = "#fff"; ctx.beginPath(); ctx.moveTo(X(p.pos.x), Z(p.pos.z));
       ctx.lineTo(X(p.pos.x - Math.sin(p.yaw) * 8), Z(p.pos.z - Math.cos(p.yaw) * 8)); ctx.stroke();
@@ -1216,6 +1312,9 @@ export class Game {
       }
     }
     return {
+      extras: { stats: { ...this.stats }, medals: earnedMedals(this.stats), journal: this.journal, mode: this.matchMode,
+        ping: this.ping && this.ping.until > this.time ? { label: this.ping.label, distance: Math.round(p.pos.distanceTo(this.ping.pos)), angle: Math.atan2(-(this.ping.pos.x-p.pos.x), -(this.ping.pos.z-p.pos.z))-p.yaw, seconds: Math.ceil(this.ping.until-this.time) } : null,
+        medicCall: this.medicCall?.until > this.time, spectator: this.actors.find(a => a.id === this.spectateId && a.alive)?.name ?? null },
       teammate, reloadProgress: p.reloadT > 0 ? reloadProgress(p.reloadT, w?.def.reload ?? 0) : 0,
       hp: Math.ceil(p.hp), maxHp: p.maxHp, alive: p.alive, respawnIn: Math.ceil(p.respawnT), cls: p.cls, team: p.team,
       weapon: w?.def.name ?? "", clip: w?.clip ?? 0, reserve: w?.reserve ?? 0, kind: w?.def.kind ?? "", reloading: p.reloadT > 0, maxClip: w?.def.clip ?? 0,
@@ -1234,7 +1333,7 @@ export class Game {
       dmgDealt: Math.round(this.dmgDealt || 0), dmgPop: this.dmgPopT > 0 ? Math.round(this.dmgPop) : 0,
       killConfirm: this.lastKillT > 0 ? this.lastKill : null,
       hit: this.hitT > 0, showBoard: this.keys.has("Tab"),
-      board: this.actors.map((a) => ({ name: a.name, team: a.team, cls: a.cls, kills: a.kills, deaths: a.deaths, alive: a.alive, me: a === p })).sort((a, b) => b.kills - a.kills),
+      board: this.actors.map((a) => ({ name: a.name, team: a.team, cls: a.cls, kills: a.kills, deaths: a.deaths, assists: a.assists ?? 0, alive: a.alive, me: a === p })).sort((a, b) => b.kills - a.kills),
     };
   }
 }
