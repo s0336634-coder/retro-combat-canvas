@@ -455,6 +455,7 @@ function medicFollow(g: Game, a: Actor): { move: THREE.Vector3 | null; look: THR
     if (d > 40) continue;
     let s = -d + (o.cls === "heavy" ? 25 : o.cls === "soldier" ? 18 : 0) + (1 - o.hp / o.maxHp) * 30 + (o.carrying ? 30 : 0);
     if (a.healTarget === o) s += 15;
+    if (g.medicCall?.actor === o && g.medicCall.until > g.time) s += 80;
     if (s > bs) { bs = s; pat = o; }
   }
   if (!pat) return { move: null, look: null };
