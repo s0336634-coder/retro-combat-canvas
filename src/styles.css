@@ -100,6 +100,11 @@
 .uber-vignette { box-shadow: var(--uber-shadow); }
 .hud-score { min-width: 350px; }
 .battle-tools { position: absolute; top: 150px; right: 12px; }
+.hud-compact .hud-health > div, .hud-compact .hud-ammo > div:last-child { padding: 12px; min-width: 120px; }
+.hud-compact .hud-health .text-5xl, .hud-compact .hud-ammo .text-5xl { font-size: 36px; }
+.hud-large .hud-health > div, .hud-large .hud-ammo > div:last-child { padding: 24px; }
+.hud-large .hud-health .text-5xl, .hud-large .hud-ammo .text-5xl { font-size: 56px; }
+.match-desk progress { accent-color: var(--primary); }
 @media (max-width: 767px) {
   .deployment-grid { grid-template-columns: 1fr; gap: 24px; }
   .deployment h1 { font-size: 30px; }
@@ -114,6 +119,9 @@
   .game-shell .hud-health .text-5xl, .game-shell .hud-ammo .text-5xl { font-size: 30px; }
   .game-shell .hud-board { width: calc(100% - 20px); gap: 8px; font-size: 9px; }
   .battle-tools { top: 170px; right: 8px; }
+  .hud-actions { bottom: 160px; }
+  .hud-ping { top: 145px; max-width: 55%; }
+  .game-shell .hud-large .hud-health .text-5xl, .game-shell .hud-large .hud-ammo .text-5xl { font-size: 36px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .game-shell *, .game-shell *::before, .game-shell *::after { animation: none !important; transition: none !important; }
