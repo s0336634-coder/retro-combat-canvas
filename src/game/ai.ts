@@ -524,7 +524,7 @@ function medicFollow(g: Game, a: Actor): { move: THREE.Vector3 | null; look: THR
   for (const o of g.actors) {
     if (!o.alive || o.team !== a.team || o === a || (o.cls === "medic")) continue;
     const d = o.pos.distanceTo(a.pos);
-    if (d > 40) continue;
+    if (d > 170) continue;
     let s = -d + (o.cls === "heavy" ? 25 : o.cls === "soldier" ? 18 : 0) + (1 - o.hp / o.maxHp) * 30 + (o.carrying ? 30 : 0);
     if (a.healTarget === o) s += 15;
     if (g.medicCall?.actor === o && g.medicCall.until > g.time) s += 80;

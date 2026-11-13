@@ -21,8 +21,10 @@ describe('bot tactical regressions', () => {
   it('routes both teams along all ten vault treads instead of cutting through the rail', () => {
     const { a, g } = fixture();
     for (const prefix of ['B_', 'R_']) {
-      const route = astar(g, a, g.map.nodeIdx[prefix + 'TRENCH_TOP'], g.map.nodeIdx[prefix + 'TRENCH_BOT']);
-      expect(route.filter(id => g.map.nodes[id].name.includes('VAULT_STAIR_'))).toHaveLength(10);
+      const start = g.map.nodeIdx[prefix + 'TRENCH_TOP'], goal = g.map.nodeIdx[prefix + 'TRENCH_BOT'];
+      if (start === undefined || goal === undefined) throw new Error('Missing vault waypoints');
+      const route = astar(g, a, start, goal);
+      expect(route.filter(id => g.map.nodes[id]?.name.includes('VAULT_STAIR_'))).toHaveLength(10);
     }
   });
   it('does not invent a direct route to a disconnected goal', () => {
@@ -47,14 +49,14 @@ describe('bot tactical regressions', () => {
   it('sends an Engineer with 120 metal to resupply rather than retrying a 130-metal sentry', () => {
     const { a, brain, g } = fixture('engineer'); a.pos.set(-50, 0, 0);
     botThink(a, g, 0);
-    expect(brain.goal).toBe(g.map.nodeIdx.B_SPAWN);
+    expect(brain.goal).toBe(g.map.nodeIdx['B_SPAWN']);
     expect(a.metal).toBe(120);
   });
   it('keeps a Medic carrier delivering instead of following a patient', () => {
     const { a, brain, g } = fixture('medic'); a.carrying = true;
     g.actors.push({ ...a, cls: 'heavy', carrying: false, pos: new THREE.Vector3(-50, 0, 16), id: 5 } as Actor);
     botThink(a, g, 0);
-    expect(brain.goal).toBe(g.map.nodeIdx.B_INTEL_VAULT);
+    expect(brain.goal).toBe(g.map.nodeIdx['B_INTEL_VAULT']);
   });
   it('clears stale pursuit and navigation memory on respawn', () => {
     const { brain, g } = fixture(); brain.lastSeen = new THREE.Vector3(50, 0, 0); brain.blockedEdges.set('0-1', 12); brain.stuckT = 4;
