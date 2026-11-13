@@ -102,7 +102,8 @@ function followPath(g: Game, a: Actor): THREE.Vector3 | null {
   while (b.path.length) {
     const n = g.map.nodes[b.path[0]];
     const dx = n.x - a.pos.x, dz = n.z - a.pos.z;
-    if (Math.hypot(dx, dz) < 1.3 && Math.abs(n.y - a.pos.y) < 2.2) { b.path.shift(); continue; }
+    const stair = /STAIR/.test(n.name);
+    if (Math.hypot(dx, dz) < (stair ? 0.45 : 1.3) && Math.abs(n.y - a.pos.y) < (stair ? 0.7 : 1.2)) { b.path.shift(); continue; }
     return new THREE.Vector3(n.x, n.y, n.z);
   }
   return b.goalPos;
@@ -117,9 +118,9 @@ export function walkClear(g: Game, a: Actor, target: THREE.Vector3) {
   for (let i = 1; i <= steps; i++) {
     const x = a.pos.x + (target.x - a.pos.x) * i / steps, z = a.pos.z + (target.z - a.pos.z) * i / steps;
     const support = g.world.ray(x, y + 0.75, z, 0, -1, 0, 2);
-    if (!support) return false;
+    if (!support) { if (a.inWater) continue; return false; }
     const nextY = y + 0.75 - support.t;
-    if (nextY - y > 0.71 || y - nextY > 1.1 || g.world.overlaps(x, nextY + 0.03, z, a.h)) return false;
+    if (nextY - y > 0.71 || y - nextY > 1.1 || g.world.overlaps(x, nextY + 0.71, z, a.h)) return false;
     y = nextY;
   }
   return true;
@@ -273,9 +274,9 @@ export function botThink(a: Actor, g: Game, dt: number) {
     }
   }
   // medics override: always heal
-  if (a.cls === "medic" && b.state !== "RETREAT_FOR_HEALTH") {
+  if (a.cls === "medic" && b.state !== "RETREAT_FOR_HEALTH" && !a.carrying && (b.state !== 'ENGAGE_ENEMY' || a.healTarget || !b.target || b.target.pos.distanceTo(a.pos) > 8)) {
     const r = medicFollow(g, a);
-    if (b.state !== "ENGAGE_ENEMY" || a.healTarget) { moveTo = r.move ?? moveTo; look = r.look ?? look; }
+    moveTo = r.move ?? moveTo; look = r.look ?? look;
   }
   // steering
   if (moveTo) {
@@ -450,7 +451,7 @@ function combatRoutine(g: Game, a: Actor, dt: number): { move: THREE.Vector3 | n
       pref = 2.5; inp.slot = d > 9 ? 1 : 0;
       for (const p of g.projectiles) {
         if (p.team === a.team || p.kind === "syringe") continue;
-        if (p.pos.distanceTo(g.eye(a)) < 5) { look = p.pos.clone(); inp.alt = !a.altPrev; break; }
+        if (p.pos.distanceTo(g.eye(a)) < 5) { inp.slot = 0; look = p.pos.clone(); inp.alt = !a.altPrev; break; }
       }
       inp.fire = b.reactT <= 0 && (inp.slot === 0 ? d < 7 : canShoot) && Math.abs(angleTo(a, g, look)) < 0.4;
       move = tc; break;
@@ -458,7 +459,7 @@ function combatRoutine(g: Game, a: Actor, dt: number): { move: THREE.Vector3 | n
     case "demoman":
       pref = 11; inp.slot = d < 2.5 ? 2 : 0;
       if (inp.slot === 0) look = t.pos.clone().add(new THREE.Vector3(0, d * d * 0.012 + 0.2, 0)).addScaledVector(b.aimErr, Math.min(1.5, d * 0.05));
-      inp.fire = b.reactT <= 0 && Math.abs(angleTo(a, g, look)) < 0.3 && d > 3;
+      inp.fire = b.reactT <= 0 && Math.abs(angleTo(a, g, look)) < 0.3 && (inp.slot === 2 ? d < 2.6 : d > 3);
       // detonate stickies near enemy
       for (const p of g.projectiles) if (p.owner === a && p.kind === "sticky" && p.stuck && p.pos.distanceTo(tc) < 3) { inp.alt = !a.altPrev; break; }
       break;
