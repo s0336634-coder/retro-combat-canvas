@@ -1,5 +1,8 @@
 # Roadmap
 
+- [x] Upgrade bot navigation, coordinated objectives, and class combat decisions.
+- [x] Verify bot behavior with regression tests and a live simulated match.
+
 - [x] Improve player and bot weapon models.
 - [x] Add visible, travelling rockets to level-three sentries.
 - [x] Make sniper NPCs miss some shots.

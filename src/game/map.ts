@@ -154,10 +154,27 @@ export function buildMap() {
     const t = team === 0 ? "B_" : "R_";
     for (const [n, X, y, Z] of P) node(t + n, team, s * X, y, Z);
     const L = (a: string, b: string) => link(t + a, t + b);
-    L("SPAWN", "HALL"); L("HALL", "UP_A_BOT"); L("UP_A_BOT", "UP_A_TOP"); L("UP_A_TOP", "BATT_A");
-    L("BATT_A", "BATT_MID"); L("BATT_MID", "BATT_B"); L("BATT_B", "UP_B_TOP"); L("UP_B_TOP", "UP_B_BOT");
+    L("SPAWN", "HALL"); L("HALL", "UP_A_BOT"); L("UP_A_TOP", "BATT_A");
+    L("BATT_A", "BATT_MID"); L("BATT_MID", "BATT_B"); L("BATT_B", "UP_B_TOP");
     L("UP_B_BOT", "HALL"); L("HALL", "INSIDE_DOOR"); L("HALL", "TRENCH_TOP"); L("INSIDE_DOOR", "TRENCH_TOP");
-    L("TRENCH_TOP", "TRENCH_BOT"); L("TRENCH_BOT", "INTEL_VAULT"); L("INTEL_VAULT", "INTEL_CORNER");
+    L("TRENCH_BOT", "INTEL_VAULT"); L("INTEL_VAULT", "INTEL_CORNER");
+    // Follow each stair tread; long diagonal links cut through rails and misattach floors.
+    for (const side of ["A", "B"]) {
+      let previous = `UP_${side}_BOT`;
+      for (let i = 1; i <= 10; i++) {
+        const name = `STAIR_${side}_${i}`;
+        node(t + name, team, s * (60.5 - i), i * 0.6, side === "A" ? 16 : -16);
+        L(previous, name); previous = name;
+      }
+      L(previous, `UP_${side}_TOP`);
+    }
+    let previous = "TRENCH_TOP";
+    for (let i = 1; i <= 10; i++) {
+      const name = `VAULT_STAIR_${i}`;
+      node(t + name, team, s * (57.5 + i), -0.6 * i, 0);
+      L(previous, name); previous = name;
+    }
+    L(previous, "TRENCH_BOT");
     L("INTEL_VAULT", "ROOM_SIDE"); L("ROOM_SIDE", "SEWER_ROOM"); L("SEWER_ROOM", "SEWERS"); L("SEWERS", "SEWER_MOAT");
     L("INSIDE_DOOR", "COURTYARD"); L("COURTYARD", "COURTYARD_ALCOVE"); L("COURTYARD", "GRATE_STEPS");
     L("GRATE_STEPS", "GRATE"); L("COURTYARD", "BRIDGE");

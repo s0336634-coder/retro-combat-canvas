@@ -3,6 +3,7 @@ import * as THREE from "three";
 import type { Actor, Game, Team, Building, BldType } from "./game";
 import type { NavNode } from "./map";
 import { BOT_DIFFICULTIES, botAimError, botReactionTime, objectiveUtility } from './difficulty';
+import { BUILD_COST } from './classes';
 
 export type BotState = "IDLE" | "PATROL" | "PURSUE_OBJECTIVE" | "ENGAGE_ENEMY" | "RETREAT_FOR_HEALTH" | "DEFEND_CHOKE" | "BUILD_NEST";
 export type Brain = {
@@ -11,6 +12,7 @@ export type Brain = {
   stuckT: number; lastPos: THREE.Vector3; bias: Map<string, number>; idleT: number; aimErr: THREE.Vector3;
   heardT: number; heardPos: THREE.Vector3 | null; buildStep: number; stickyT: number; home: string; lookYaw: number;
   reset: (g: Game) => void; hurtBy: (a: Actor, g: Game) => void;
+  lastSeen: THREE.Vector3 | null; steerT: number; steer: THREE.Vector3; blockedEdges: Map<string, number>;
 };
 
 const SEWER_EDGE = /SEWER|MOAT/;
@@ -20,7 +22,8 @@ export function makeBrain(a: Actor): Brain {
     state: "IDLE", path: [], goal: -1, goalPos: null, repathT: 0, thinkT: 0, target: null, targetBld: null, seenT: 0,
     reactT: 0, strafe: 1, strafeT: 0, stuckT: 0, lastPos: new THREE.Vector3(), bias: new Map(), idleT: 1 + Math.random(),
     aimErr: new THREE.Vector3(), heardT: 0, heardPos: null, buildStep: 0, stickyT: 0, home: "", lookYaw: 0,
-    reset() { b.state = "IDLE"; b.path = []; b.goal = -1; b.target = null; b.idleT = 0.5 + Math.random(); b.buildStep = 0; b.stickyT = 0; b.lastPos.copy(a.pos); rollBias(); },
+    lastSeen: null, steerT: 0, steer: new THREE.Vector3(), blockedEdges: new Map(),
+    reset() { b.state = "IDLE"; b.path = []; b.goal = -1; b.goalPos = null; b.repathT = 0; b.target = null; b.targetBld = null; b.seenT = 0; b.heardT = 0; b.lastSeen = null; b.steerT = 0; b.blockedEdges.clear(); b.stuckT = 0; b.unstuckT = 0; b.idleT = 0.5 + Math.random(); b.buildStep = 0; b.stickyT = 0; b.lastPos.copy(a.pos); rollBias(); },
     hurtBy(from, g) { if (b.target === from) { b.seenT = 2.5; return; } if (!b.target || Math.random() < 0.5) { b.target = from; b.seenT = 2.5; b.reactT = botReactionTime(g.botDifficulty, a.cls === 'sniper', true); } },
   };
   const rollBias = () => { b.bias.clear(); };
@@ -28,7 +31,7 @@ export function makeBrain(a: Actor): Brain {
 }
 
 // ---------- navigation ----------
-function edgeCost(a: Actor, b: Brain, from: NavNode, to: NavNode) {
+function edgeCost(a: Actor, b: Brain, from: NavNode, to: NavNode, time: number) {
   const key = from.id < to.id ? `${from.id}-${to.id}` : `${to.id}-${from.id}`;
   let r = b.bias.get(key);
   if (r === undefined) { r = 0.7 + Math.random() * 0.9; b.bias.set(key, r); }
@@ -36,31 +39,34 @@ function edgeCost(a: Actor, b: Brain, from: NavNode, to: NavNode) {
   const sewer = SEWER_EDGE.test(from.name) || SEWER_EDGE.test(to.name);
   if (a.cls === "scout" && sewer) c *= 0.5;
   if (a.cls === "spy" && sewer) c *= 0.7;
+  if ((b.blockedEdges.get(key) ?? 0) > time) c *= 8;
   return c;
 }
 export function astar(g: Game, a: Actor, start: number, goal: number): number[] {
   const N = g.map.nodes;
+  const brain = a.brain;
+  if (!brain || !N[start] || !N[goal]) return [];
   const open = new Set([start]);
   const gs = new Map<number, number>([[start, 0]]);
   const fs = new Map<number, number>();
   const came = new Map<number, number>();
-  const h = (i: number) => Math.hypot(N[i].x - N[goal].x, N[i].y - N[goal].y, N[i].z - N[goal].z);
+  const h = (i: number) => Math.hypot(N[i].x - N[goal].x, N[i].y - N[goal].y, N[i].z - N[goal].z) * 0.35;
   fs.set(start, h(start));
   while (open.size) {
     let cur = -1, bf = Infinity;
     for (const o of open) { const f = fs.get(o) ?? Infinity; if (f < bf) { bf = f; cur = o; } }
     if (cur === goal) {
       const path = [cur];
-      while (came.has(cur)) { cur = came.get(cur)!; path.unshift(cur); }
+      while (came.has(cur)) { const previous = came.get(cur); if (previous === undefined) break; cur = previous; path.unshift(cur); }
       return path;
     }
     open.delete(cur);
     for (const nb of N[cur].edges) {
-      const t = (gs.get(cur) ?? Infinity) + edgeCost(a, a.brain!, N[cur], N[nb]);
+      const t = (gs.get(cur) ?? Infinity) + edgeCost(a, brain, N[cur], N[nb], g.time ?? 0);
       if (t < (gs.get(nb) ?? Infinity)) { came.set(nb, cur); gs.set(nb, t); fs.set(nb, t + h(nb)); open.add(nb); }
     }
   }
-  return [goal];
+  return [];
 }
 export function nearestNode(g: Game, p: THREE.Vector3, needLos = true) {
   let best = -1, bd = Infinity;
@@ -78,14 +84,14 @@ const tn = (a: Actor | Team, name: string) => (typeof a === "number" ? (a === 0 
 function goTo(g: Game, a: Actor, nodeName: string | number, pos?: THREE.Vector3) {
   const b = a.brain!;
   const id = typeof nodeName === "number" ? nodeName : g.map.nodeIdx[nodeName];
-  if (b.goal !== id || b.repathT <= 0 || !b.path.length) {
+  if (b.goal !== id || b.repathT <= 0) {
     b.goal = id;
     b.path = astar(g, a, nearestNode(g, a.pos), id);
     // Skip the start node when we're already past it toward the next one, so repaths don't drag bots backwards.
     if (b.path.length > 1) {
       const n0 = g.map.nodes[b.path[0]], n1 = g.map.nodes[b.path[1]];
       const dSelf = Math.hypot(n1.x - a.pos.x, n1.z - a.pos.z), dSeg = Math.hypot(n1.x - n0.x, n1.z - n0.z);
-      if (dSelf < dSeg && Math.abs(n1.y - a.pos.y) < 2.5) b.path.shift();
+      if (dSelf < dSeg && Math.abs(n1.y - a.pos.y) < 2.5 && walkClear(g, a, new THREE.Vector3(n1.x, n1.y, n1.z))) b.path.shift();
     }
     b.repathT = pos ? 1.5 : 3;
   }
@@ -96,10 +102,56 @@ function followPath(g: Game, a: Actor): THREE.Vector3 | null {
   while (b.path.length) {
     const n = g.map.nodes[b.path[0]];
     const dx = n.x - a.pos.x, dz = n.z - a.pos.z;
-    if (Math.hypot(dx, dz) < 1.3 && Math.abs(n.y - a.pos.y) < 2.2) { b.path.shift(); continue; }
+    const stair = /STAIR/.test(n.name);
+    if (Math.hypot(dx, dz) < (stair ? 0.45 : 1.3) && Math.abs(n.y - a.pos.y) < (stair ? 0.7 : 1.2)) { b.path.shift(); continue; }
     return new THREE.Vector3(n.x, n.y, n.z);
   }
   return b.goalPos;
+}
+
+// Test the actor's full width, support and step clearance, not just an eye ray.
+export function walkClear(g: Game, a: Actor, target: THREE.Vector3) {
+  if (!g.world.ray) return true;
+  const distance = Math.hypot(target.x - a.pos.x, target.z - a.pos.z);
+  const steps = Math.max(1, Math.ceil(distance / 0.45));
+  let y = a.pos.y;
+  for (let i = 1; i <= steps; i++) {
+    const x = a.pos.x + (target.x - a.pos.x) * i / steps, z = a.pos.z + (target.z - a.pos.z) * i / steps;
+    const support = g.world.ray(x, y + 0.75, z, 0, -1, 0, 2);
+    if (!support) { if (a.inWater) continue; return false; }
+    const nextY = y + 0.75 - support.t;
+    if (nextY - y > 0.71 || y - nextY > 1.1 || g.world.overlaps(x, nextY + 0.71, z, a.h)) return false;
+    y = nextY;
+  }
+  return true;
+}
+
+function nearestHelpers(g: Game, a: Actor, pos: THREE.Vector3, count: number) {
+  return g.actors.filter(o => o.alive && o.team === a.team && !o.carrying && o.cls !== 'engineer' && o.cls !== 'medic')
+    .sort((p, q) => p.pos.distanceTo(pos) - q.pos.distanceTo(pos) || p.id - q.id).slice(0, count).includes(a);
+}
+
+function steerToward(g: Game, a: Actor, desired: THREE.Vector3, dt: number) {
+  const b = a.brain;
+  if (!b) return desired;
+  b.steerT -= dt;
+  if (b.steerT > 0) return b.steer;
+  b.steerT = 0.12;
+  let best = new THREE.Vector3(), score = -Infinity;
+  for (const angle of [0, 0.4, -0.4, 0.85, -0.85, 1.4, -1.4, Math.PI]) {
+    const v = desired.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+    const probe = a.pos.clone().addScaledVector(v, 1.25);
+    if (!walkClear(g, a, probe)) continue;
+    let value = v.dot(desired) * 3 + v.dot(b.steer) * 0.4;
+    for (const o of g.actors) {
+      if (o === a || !o.alive || Math.abs(o.pos.y - a.pos.y) > 1.5) continue;
+      const predicted = o.pos.clone().addScaledVector(o.vel, 0.15);
+      value -= Math.max(0, 1.4 - probe.distanceTo(predicted)) * 2;
+    }
+    if (value > score) { best = v; score = value; }
+  }
+  b.steer.copy(best);
+  return b.steer;
 }
 
 // ---------- perception ----------
@@ -149,7 +201,7 @@ export function botThink(a: Actor, g: Game, dt: number) {
   if (b.thinkT <= 0) {
     b.thinkT = BOT_DIFFICULTIES[g.botDifficulty].thinkInterval;
     const per = perceive(g, a);
-    if (per.enemy) { if (b.target !== per.enemy) b.reactT = botReactionTime(g.botDifficulty, a.cls === 'sniper'); b.target = per.enemy; b.seenT = 1.5; }
+    if (per.enemy) { if (b.target !== per.enemy) b.reactT = botReactionTime(g.botDifficulty, a.cls === 'sniper'); b.target = per.enemy; b.lastSeen = per.enemy.pos.clone(); b.seenT = 1.5; }
     else if (b.seenT <= 0) b.target = null;
     if (b.target && !b.target.alive) b.target = null;
     if (per.bld && b.targetBld !== per.bld && !b.target) b.reactT = botReactionTime(g.botDifficulty, a.cls === 'sniper');
@@ -175,9 +227,13 @@ export function botThink(a: Actor, g: Game, dt: number) {
     case "PURSUE_OBJECTIVE": {
       if (a.carrying && own.state === "AT_BASE") goTo(g, a, tn(a, "INTEL_VAULT"), own.home);
       else if (a.carrying) goTo(g, a, tn(a, "HALL")); // hold safely until our intel is returned
-      else if (own.state !== "AT_BASE" && own.carrier) { goTo(g, a, nearestNode(g, own.carrier.pos, false), own.carrier.pos); }
-      else if (own.state === "DROPPED") goTo(g, a, nearestNode(g, own.pos, false), own.pos);
-      else if (enemyFlag.state === "CARRIED" && enemyFlag.carrier) goTo(g, a, nearestNode(g, enemyFlag.carrier.pos, false), enemyFlag.carrier.pos.clone().add(new THREE.Vector3(2, 0, 2)));
+      else if (own.state !== "AT_BASE" && own.carrier && nearestHelpers(g, a, own.carrier.pos, 3)) { goTo(g, a, nearestNode(g, own.carrier.pos, false), own.carrier.pos); }
+      else if (own.state === "DROPPED" && nearestHelpers(g, a, own.pos, 2)) goTo(g, a, nearestNode(g, own.pos, false), own.pos);
+      else if (enemyFlag.state === "CARRIED" && enemyFlag.carrier) {
+        const carrier = enemyFlag.carrier;
+        const escort = carrier.pos.clone().add(new THREE.Vector3((a.id % 2 ? 1 : -1) * 2, 0, 1.5));
+        goTo(g, a, nearestNode(g, carrier.pos, false), walkClear(g, a, escort) ? escort : carrier.pos);
+      }
       else goTo(g, a, nearestNode(g, enemyFlag.pos, false), enemyFlag.pos);
       if (a.cls === "spy" && !b.target) {
         const enemySide = Math.sign(a.pos.x) !== Math.sign(a.team === 0 ? -1 : 1) || Math.abs(a.pos.x) < 30;
@@ -211,15 +267,16 @@ export function botThink(a: Actor, g: Game, dt: number) {
     case "ENGAGE_ENEMY": { const r = combat(g, a, dt); moveTo = r.move; look = r.look; break; }
     case "PATROL": case "IDLE": default: {
       if (a.cls === "medic") { const r = medicFollow(g, a); moveTo = r.move; look = r.look; break; }
-      goTo(g, a, b.goal >= 0 ? b.goal : tn(a, "COURTYARD"));
+      if (b.heardT > 0 && b.heardPos) goTo(g, a, nearestNode(g, b.heardPos), b.heardPos);
+      else goTo(g, a, b.goal >= 0 ? b.goal : tn(a, "COURTYARD"));
       moveTo = followPath(g, a);
-      if (!moveTo) b.goal = g.map.nodes.filter((n) => n.team === a.team)[Math.floor(Math.random() * 20)].id;
+      if (!moveTo) { const nodes = g.map.nodes.filter((n) => n.team === a.team); const next = nodes[Math.floor(Math.random() * nodes.length)]; if (next) { b.goal = next.id; b.repathT = 0; } }
     }
   }
   // medics override: always heal
-  if (a.cls === "medic" && b.state !== "RETREAT_FOR_HEALTH") {
+  if (a.cls === "medic" && b.state !== "RETREAT_FOR_HEALTH" && !a.carrying && (b.state !== 'ENGAGE_ENEMY' || a.healTarget || !b.target || b.target.pos.distanceTo(a.pos) > 8)) {
     const r = medicFollow(g, a);
-    if (b.state !== "ENGAGE_ENEMY" || a.healTarget) { moveTo = r.move ?? moveTo; look = r.look ?? look; }
+    moveTo = r.move ?? moveTo; look = r.look ?? look;
   }
   // steering
   if (moveTo) {
@@ -228,12 +285,7 @@ export function botThink(a: Actor, g: Game, dt: number) {
     const stopRadius = b.state === "PURSUE_OBJECTIVE" ? 0.1 : 0.3;
     if (L > stopRadius) {
       d.divideScalar(L);
-      // separate from teammates so bots don't jam in doorways / spawn
-      for (const o of g.actors) {
-        if (o === a || !o.alive || o.team !== a.team) continue;
-        const ox = a.pos.x - o.pos.x, oz = a.pos.z - o.pos.z, od = Math.hypot(ox, oz);
-        if (od > 0.01 && od < 1.3 && Math.abs(o.pos.y - a.pos.y) < 1.5) { const k = (1.3 - od) / od * 0.8; d.x += ox * k; d.z += oz * k; }
-      }
+      d.copy(steerToward(g, a, d, dt));
       const n = Math.hypot(d.x, d.z) || 1;
       inp.wx = d.x / n; inp.wz = d.z / n;
     } else { inp.wx = inp.wz = 0; }
@@ -252,12 +304,22 @@ export function botThink(a: Actor, g: Game, dt: number) {
       if (a.pos.distanceTo(b.lastPos) < 0.6) {
         if (a.onGround) inp.jump = true;
         b.unstuckT = 0.6; b.unstuckSide = Math.random() < 0.5 ? -1 : 1;
-        if (b.stuckT > 2.2) { b.repathT = 0; b.path = []; b.stuckT = 0; b.lastPos.copy(a.pos); if (b.state === "PATROL") b.goal = -1; }
+        if (b.stuckT > 2.2) {
+          const start = nearestNode(g, a.pos), next = b.path[0];
+          if (next !== undefined && start !== next) b.blockedEdges.set(start < next ? `${start}-${next}` : `${next}-${start}`, (g.time ?? 0) + 12);
+          b.repathT = 0; b.path = []; b.steerT = 0; b.stuckT = 0; b.lastPos.copy(a.pos); if (b.state === "PATROL") b.goal = -1;
+        }
       } else { b.stuckT = 0; b.lastPos.copy(a.pos); }
     }
   } else { b.stuckT = 0; b.lastPos.copy(a.pos); }
   // reload during downtime
-  if (!b.target && b.state !== "ENGAGE_ENEMY" && Math.random() < 0.02) inp.reload = true;
+  const weapon = a.weapons?.[inp.slot];
+  if (weapon && weapon.def.reload && weapon.clip < weapon.def.clip && (!b.target || weapon.clip === 0)) inp.reload = true;
+  if (weapon && weapon.def.clip > 0 && weapon.clip === 0 && weapon.reserve === 0) {
+    const fallback = a.weapons.findIndex(w => w.def.clip === 0 || w.clip > 0 || w.reserve > 0);
+    if (fallback >= 0) inp.slot = fallback;
+  }
+  if (a.scoped && b.state !== 'ENGAGE_ENEMY' && moveTo && a.pos.distanceTo(moveTo) > 3) inp.alt = !a.altPrev;
   if (look) aimAt(g, a, look, dt);
 }
 
@@ -268,6 +330,7 @@ export function chooseState(g: Game, a: Actor): import("./ai").BotState {
   const role = a.cls;
   if (["scout", "soldier", "spy", "pyro"].includes(role)) u.PURSUE_OBJECTIVE = 40;
   if (["heavy", "demoman", "sniper"].includes(role)) u.DEFEND_CHOKE = 40;
+  if (["heavy", "demoman"].includes(role) && (Math.floor((g.time ?? 0) / 25) + a.id) % 3 !== 0) u.PURSUE_OBJECTIVE = 65;
   if (role === "pyro" && a.id % 2 === 0) u.DEFEND_CHOKE = 45;
   if (role === "heavy" && g.actors.some((m) => m.alive && m.healTarget === a)) u.PURSUE_OBJECTIVE = 60; // pocketed heavy pushes
   if (role === "engineer") u.BUILD_NEST = 45;
@@ -276,7 +339,8 @@ export function chooseState(g: Game, a: Actor): import("./ai").BotState {
     // Push with the carrier instead of leaving them to cross the map alone.
     u.PURSUE_OBJECTIVE = Math.max(u.PURSUE_OBJECTIVE, role === "engineer" || role === "sniper" ? 35 : 85);
   }
-  if (own.state !== "AT_BASE") u.PURSUE_OBJECTIVE = Math.max(u.PURSUE_OBJECTIVE, role === "sniper" || role === "engineer" ? 30 : 90);
+  const recoveryPos = own.carrier?.pos ?? own.pos;
+  if (own.state !== "AT_BASE" && recoveryPos && nearestHelpers(g, a, recoveryPos, own.carrier ? 3 : 2)) u.PURSUE_OBJECTIVE = Math.max(u.PURSUE_OBJECTIVE, 110);
   u.PURSUE_OBJECTIVE = objectiveUtility(g.botDifficulty, u.PURSUE_OBJECTIVE, a.carrying);
   if (b.target) u.ENGAGE_ENEMY = 70 + (b.target.carrying ? 100 : 0) - (a.carrying ? 90 : 0);
   if (a.cls === "spy" && b.target && a.cloaked && !b.target.carrying) u.ENGAGE_ENEMY = 30;
@@ -327,10 +391,18 @@ function aimAt(g: Game, a: Actor, p: THREE.Vector3, dt: number) {
 
 // ---------- combat routines ----------
 function combat(g: Game, a: Actor, dt: number): { move: THREE.Vector3 | null; look: THREE.Vector3 | null } {
+  const b = a.brain;
+  if (b?.target && !g.los(g.eye(a), g.center(b.target))) {
+    if (b.lastSeen) { goTo(g, a, nearestNode(g, b.lastSeen), b.lastSeen); return { move: followPath(g, a), look: b.lastSeen.clone().add(new THREE.Vector3(0, 1, 0)) }; }
+    return { move: null, look: null };
+  }
   const result = combatRoutine(g, a, dt);
   // Gate every hostile primary attack, including flames, backstabs, and building attacks.
   // Healing and Engineer maintenance are handled outside this combat boundary.
   if (a.brain?.reactT > 0) a.input.fire = false;
+  const def = a.weapons?.[a.input.slot]?.def;
+  if (a.input.fire && result.look && !g.los(g.eye(a), result.look)) a.input.fire = false;
+  if (a.input.fire && def?.splash && result.look && result.look.distanceTo(g.eye(a)) < def.splash && a.hp < a.maxHp * 0.6) a.input.fire = false;
   return result;
 }
 
@@ -379,7 +451,7 @@ function combatRoutine(g: Game, a: Actor, dt: number): { move: THREE.Vector3 | n
       pref = 2.5; inp.slot = d > 9 ? 1 : 0;
       for (const p of g.projectiles) {
         if (p.team === a.team || p.kind === "syringe") continue;
-        if (p.pos.distanceTo(g.eye(a)) < 5) { look = p.pos.clone(); inp.alt = !a.altPrev; break; }
+        if (p.pos.distanceTo(g.eye(a)) < 5) { inp.slot = 0; look = p.pos.clone(); inp.alt = !a.altPrev; break; }
       }
       inp.fire = b.reactT <= 0 && (inp.slot === 0 ? d < 7 : canShoot) && Math.abs(angleTo(a, g, look)) < 0.4;
       move = tc; break;
@@ -387,7 +459,7 @@ function combatRoutine(g: Game, a: Actor, dt: number): { move: THREE.Vector3 | n
     case "demoman":
       pref = 11; inp.slot = d < 2.5 ? 2 : 0;
       if (inp.slot === 0) look = t.pos.clone().add(new THREE.Vector3(0, d * d * 0.012 + 0.2, 0)).addScaledVector(b.aimErr, Math.min(1.5, d * 0.05));
-      inp.fire = b.reactT <= 0 && Math.abs(angleTo(a, g, look)) < 0.3 && d > 3;
+      inp.fire = b.reactT <= 0 && Math.abs(angleTo(a, g, look)) < 0.3 && (inp.slot === 2 ? d < 2.6 : d > 3);
       // detonate stickies near enemy
       for (const p of g.projectiles) if (p.owner === a && p.kind === "sticky" && p.stuck && p.pos.distanceTo(tc) < 3) { inp.alt = !a.altPrev; break; }
       break;
@@ -407,7 +479,7 @@ function combatRoutine(g: Game, a: Actor, dt: number): { move: THREE.Vector3 | n
       break;
     case "sniper": {
       pref = 30;
-      if (d < 7) { inp.slot = d < 2 ? 2 : 1; inp.fire = canShoot; break; }
+      if (d < 7) { if (a.scoped) inp.alt = !a.altPrev; inp.slot = d < 2 ? 2 : 1; inp.fire = canShoot; break; }
       inp.slot = 0;
       if (!a.scoped && a.onGround) inp.alt = !a.altPrev;
       const hy = t.pos.y + t.h - 0.2;
@@ -452,7 +524,7 @@ function medicFollow(g: Game, a: Actor): { move: THREE.Vector3 | null; look: THR
   for (const o of g.actors) {
     if (!o.alive || o.team !== a.team || o === a || (o.cls === "medic")) continue;
     const d = o.pos.distanceTo(a.pos);
-    if (d > 40) continue;
+    if (d > 170) continue;
     let s = -d + (o.cls === "heavy" ? 25 : o.cls === "soldier" ? 18 : 0) + (1 - o.hp / o.maxHp) * 30 + (o.carrying ? 30 : 0);
     if (a.healTarget === o) s += 15;
     if (g.medicCall?.actor === o && g.medicCall.until > g.time) s += 80;
@@ -479,25 +551,30 @@ function engineerLogic(g: Game, a: Actor, dt: number): THREE.Vector3 | null {
   const nest = a.id % 2 ? "INTEL_CORNER" : "COURTYARD";
   const plan: [BldType, string][] = [["sentry", nest], ["dispenser", nest], ["tele_in", "SPAWN"], ["tele_out", "INSIDE_DOOR"]];
   const todo = plan.find(([t]) => !mine(t));
-  if (todo && a.metal < 100 && !mine("dispenser")) { goTo(g, a, tn(a, "SPAWN")); return followPath(g, a); }
-  if (todo && a.metal >= 50) {
+  if (todo && a.metal < BUILD_COST[todo[0]]) {
+    const dispenser = mine('dispenser');
+    if (dispenser && dispenser.buildT <= 0 && !dispenser.sappedBy) { goTo(g, a, nearestNode(g, dispenser.pos), dispenser.pos); return a.pos.distanceTo(dispenser.pos) > 2 ? followPath(g, a) : null; }
+    goTo(g, a, tn(a, "SPAWN")); return followPath(g, a);
+  }
+  if (todo && a.metal >= BUILD_COST[todo[0]]) {
     const [type, where] = todo;
     goTo(g, a, tn(a, where));
     const np = nodePos(g, tn(a, where));
     const mv = followPath(g, a);
     if (a.pos.distanceTo(np) < 2.2 || !mv) {
-      const off = type === "dispenser" ? new THREE.Vector3(0, 0, 1.6) : type === "sentry" ? new THREE.Vector3(a.team === 0 ? 1 : -1, 0, -0.8) : new THREE.Vector3(0.9, 0, 0.9);
+      const angle = b.buildStep * 0.7;
+      const off = new THREE.Vector3(Math.cos(angle) * 2.2, 0, Math.sin(angle) * 2.2);
       const pos = new THREE.Vector3(a.pos.x, a.pos.y, a.pos.z).add(off);
       const down = g.world.ray(pos.x, a.pos.y + 1, pos.z, 0, -1, 0, 3);
       if (down) pos.y = a.pos.y + 1 - down.t;
       const yaw = a.team === 0 ? -Math.PI / 2 : Math.PI / 2;
-      if (!g.placeBuilding(a, type, pos, yaw)) { b.buildStep++; if (b.buildStep > 40) { a.pos.x += (Math.random() - 0.5); b.buildStep = 0; } }
+      if (!g.placeBuilding(a, type, pos, yaw)) b.buildStep++; else b.buildStep = 0;
       return null;
     }
     return mv;
   }
   // maintain: whack the most damaged / un-upgraded building
-  const blds = g.buildings.filter((x) => x.owner === a && x.type !== "tele_in" && x.type !== "tele_out");
+  const blds = g.buildings.filter((x) => x.team === a.team && (x.owner === a || x.sappedBy || x.hp < x.maxHp * 0.5));
   let job = blds.find((x) => x.sappedBy) ?? blds.sort((p, q) => p.hp / p.maxHp - q.hp / q.maxHp)[0];
   const s = mine("sentry"), dsp = mine("dispenser");
   if (job && job.hp >= job.maxHp && s && s.level < 3 && a.metal > 0) job = s;
@@ -506,7 +583,7 @@ function engineerLogic(g: Game, a: Actor, dt: number): THREE.Vector3 | null {
   if (a.metal <= 0 && !mine("dispenser")) { goTo(g, a, tn(a, "SPAWN")); return followPath(g, a); }
   inp.slot = 2;
   const jp = job.pos.clone().add(new THREE.Vector3(0, 0.5, 0));
-  if (jp.distanceTo(a.pos) > 1.8) { b.goalPos = jp; return jp; }
+  if (jp.distanceTo(a.pos) > 1.8) { goTo(g, a, nearestNode(g, job.pos), job.pos); return walkClear(g, a, job.pos) ? job.pos : followPath(g, a); }
   aimAt(g, a, jp, dt);
   inp.fire = true;
   return null;
