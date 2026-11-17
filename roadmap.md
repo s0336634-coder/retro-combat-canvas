@@ -1,5 +1,8 @@
 # Roadmap
 
+- [ ] Add 30 upgrades: softer bot aim; pause; bot roster size; team switching; attack, defend and regroup orders; capture goal; respawn timing; pickup timing; regeneration; rapid reload; endless reserves; safe rocket jumps; fast movement; partial auto-reload; scope sensitivity; left-handed view; weapon visibility; killfeed visibility; damage-number visibility; FPS visibility; objective distance/floor; oxygen gauge; sticky counter; spawn protection; death recap; match report; building demolition; weapon inspection.
+- [ ] Test new rules and verify the operations menu and live gameplay on desktop/mobile.
+
 - [x] Upgrade bot navigation, coordinated objectives, and class combat decisions.
 - [x] Verify bot behavior with regression tests and a live simulated match.
 
