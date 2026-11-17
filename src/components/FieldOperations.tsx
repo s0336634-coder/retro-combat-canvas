@@ -11,7 +11,7 @@ export function FieldOperations({ game }: { game: any }) {
       <Button variant="outline" onClick={() => { game.inspectWeapon(); }}><ScanEye />Inspect weapon</Button>
     </div>
     <section><h3 className="mb-3 font-black">SQUAD ORDERS <span className="ml-2 text-xs font-normal text-muted-foreground">{ops.order.toUpperCase()} · {ops.orderSeconds}s</span></h3>
-      <div className="flex flex-wrap gap-2">{(['balanced','attack','defend','regroup'] as const).map(order => <Button key={order} variant={ops.order === order ? 'default' : 'outline'} onClick={() => game.issueOrder(order)}><Flag />{order[0].toUpperCase() + order.slice(1)}</Button>)}</div>
+      <div className="flex flex-wrap gap-2">{(['balanced','attack','defend','regroup'] as const).map(order => <Button key={order} variant={ops.order === order ? 'default' : 'outline'} onClick={() => game.issueOrder(order)}><Flag />{order.slice(0,1).toUpperCase() + order.slice(1)}</Button>)}</div>
     </section>
     <section className="grid gap-x-8 md:grid-cols-2">
       <label className="border-b border-border py-4 text-sm">Bots per team <span className="float-right font-mono text-primary">{ops.botCount}</span><input aria-label="Bots per team" className="mt-3 w-full accent-primary" type="range" min={0} max={9} value={ops.botCount} onChange={e => game.setBotCount(Number(e.target.value))} /></label>
