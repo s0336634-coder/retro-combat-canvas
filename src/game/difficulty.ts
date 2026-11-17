@@ -1,7 +1,7 @@
 export const BOT_DIFFICULTIES = {
-  easy: { label: 'Easy', aimError: 1.1, sniperAimError: 0.3, sniperMissChance: 0.5, reactionTime: 0.55, thinkInterval: 0.35, turnSpeed: 0.7, objectivePressure: 0.65 },
-  normal: { label: 'Normal', aimError: 0.45, sniperAimError: 0.12, sniperMissChance: 0.28, reactionTime: 0.2, thinkInterval: 0.25, turnSpeed: 1, objectivePressure: 1 },
-  hard: { label: 'Hard', aimError: 0.2, sniperAimError: 0.06, sniperMissChance: 0.15, reactionTime: 0.1, thinkInterval: 0.15, turnSpeed: 1.2, objectivePressure: 2 },
+  easy: { label: 'Easy', aimError: 2.4, sniperAimError: 0.7, sniperMissChance: 0.7, reactionTime: 0.55, thinkInterval: 0.35, turnSpeed: 0.7, objectivePressure: 0.65 },
+  normal: { label: 'Normal', aimError: 1.3, sniperAimError: 0.4, sniperMissChance: 0.5, reactionTime: 0.2, thinkInterval: 0.25, turnSpeed: 1, objectivePressure: 1 },
+  hard: { label: 'Hard', aimError: 0.65, sniperAimError: 0.2, sniperMissChance: 0.3, reactionTime: 0.1, thinkInterval: 0.15, turnSpeed: 1.2, objectivePressure: 2 },
 } as const;
 
 export type BotDifficulty = keyof typeof BOT_DIFFICULTIES;

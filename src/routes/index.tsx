@@ -150,7 +150,7 @@ function Index() {
           </div>
 
           {/* Killfeed */}
-          <div className="hud-killfeed pointer-events-none absolute left-4 top-4 space-y-1 font-mono text-xs italic">
+          <div className={cn('hud-killfeed pointer-events-none absolute left-4 top-4 space-y-1 font-mono text-xs italic', !preferences.showKillfeed && 'hidden')}>
             {hud.killfeed.map((k: any, i: number) => (
               <div key={i} className={cn("rounded px-2 py-0.5 bg-overlay/60 border-l-4", k.team === 0 ? "border-team-blu" : "border-team-red")}>
                 {k.text}
@@ -251,13 +251,13 @@ function Index() {
           {/* 9. Übercharge active */}
           {hud.uberActive && <div className="pointer-events-none absolute inset-0 uber-vignette" />}
           {/* New: floating damage number */}
-          {hud.alive && hud.dmgPop > 0 && <div className="pointer-events-none absolute left-1/2 top-1/2 translate-x-6 -translate-y-10 font-mono text-lg font-black text-warning drop-shadow">-{hud.dmgPop}</div>}
+          {preferences.showDamage && hud.alive && hud.dmgPop > 0 && <div className="pointer-events-none absolute left-1/2 top-1/2 translate-x-6 -translate-y-10 font-mono text-lg font-black text-warning drop-shadow">-{hud.dmgPop}</div>}
           {/* New: kill confirmation */}
           {hud.killConfirm && <div className="pointer-events-none absolute left-1/2 top-1/3 -translate-x-1/2 rounded bg-destructive/90 px-4 py-1 text-sm font-black uppercase tracking-wider text-destructive-foreground">Eliminated {hud.killConfirm}</div>}
           {/* New: damage dealt, FPS, MVP */}
           <div className="pointer-events-none absolute right-3 top-[164px] rounded bg-card/80 px-3 py-1 text-right font-mono text-xs leading-5">
             <div>DMG {hud.dmgDealt}</div>
-            <div className="text-muted-foreground">{fps} FPS</div>
+            {preferences.showFps && <div className="text-muted-foreground">{fps} FPS</div>}
             {hud.board?.[0] && hud.board[0].kills > 0 && <div className={hud.board[0].me ? "font-black text-warning" : ""}>MVP {hud.board[0].me ? "YOU" : hud.board[0].name} ({hud.board[0].kills})</div>}
           </div>
           {/* 10. Tab scoreboard */}
@@ -289,6 +289,16 @@ function Index() {
             <Button size="icon" variant="outline" title="Match desk" aria-label="Open match desk" onClick={() => { document.exitPointerLock(); setDesk(true); }}><ClipboardList /></Button>
           </div>
           {hud.teammate && hud.alive && <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 translate-y-12 text-center text-xs text-team-blu"><div className="font-bold">{hud.teammate.name}</div><div className="font-mono">{hud.teammate.hp} / {hud.teammate.maxHp} HP</div></div>}
+          {hud.operations && <>
+            <div className="field-telemetry absolute left-1/2 bottom-20 -translate-x-1/2 text-center font-mono text-xs text-primary">
+              {hud.alive && <div>INTEL {hud.operations.objectiveDistance}m · {hud.operations.objectiveFloor}</div>}
+              {hud.cls === 'demoman' && <div>STICKIES {hud.operations.stickies} / 8</div>}
+              {hud.operations.protected && hud.alive && <div className="text-health">SPAWN PROTECTION</div>}
+              {hud.operations.order !== 'balanced' && <div>{hud.operations.order.toUpperCase()} · {hud.operations.orderSeconds}s</div>}
+            </div>
+            {hud.alive && hud.air < 12 && <div className="absolute left-1/2 top-1/2 w-32 -translate-x-1/2 translate-y-24"><div className="mb-1 text-center font-mono text-xs text-team-blu">AIR {Math.max(0,Math.ceil(hud.air))}s</div><progress aria-label="Oxygen remaining" className="h-2 w-full accent-primary" max={12} value={Math.max(0,hud.air)} /></div>}
+            {hud.operations.paused && !desk && <div className="absolute left-1/2 top-24 -translate-x-1/2 font-black text-primary">MATCH PAUSED</div>}
+          </>}
           </div>
           {desk && hud.extras && <MatchDesk game={game.current} extras={hud.extras} preferences={preferences} onPreferences={changePreferences} onClose={() => setDesk(false)} />}
           {!hud.locked && !classMenu && !desk && (
@@ -296,7 +306,8 @@ function Index() {
             <div className="absolute inset-0 flex items-center justify-center bg-overlay/60 backdrop-blur-[2px]">
               <div className="flex w-72 flex-col gap-3 border border-border bg-card p-6">
                 <h2 className="text-2xl font-black uppercase">Battle standby</h2>
-                <Button onClick={() => { setSettings(false); game.current?.lock(); }}><Play /> Resume battle</Button>
+                <Button onClick={() => { setSettings(false); game.current?.setPaused(false); game.current?.lock(); }}><Play /> Resume battle</Button>
+                <Button variant="outline" onClick={() => setDesk(true)}><ClipboardList /> Match desk</Button>
                 <Button variant="outline" onClick={() => { setSettings(false); setClassMenu(true); }}><Users /> Change class</Button>
                 <Button variant="outline" onClick={() => setSettings((v) => !v)}><Settings2 /> Aim settings</Button>
                 <Button variant="ghost" onClick={fullscreen}><Expand /> Fullscreen</Button>

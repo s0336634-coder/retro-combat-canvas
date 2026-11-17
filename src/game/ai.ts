@@ -279,6 +279,11 @@ export function botThink(a: Actor, g: Game, dt: number) {
     moveTo = r.move ?? moveTo; look = r.look ?? look;
   }
   // steering
+  if (g.squadOrder === 'regroup' && g.orderUntil > g.time && a.team === g.player?.team && !a.carrying && b.state !== 'RETREAT_FOR_HEALTH' && !b.target && a.cls !== 'engineer' && a.cls !== 'medic') {
+    const rally = g.player.pos.clone().add(new THREE.Vector3((a.id % 3 - 1) * 2,0,2));
+    if (a.pos.distanceTo(g.player.pos) > 5) { goTo(g,a,nearestNode(g,rally),rally); moveTo = followPath(g,a); }
+    else moveTo = null;
+  }
   if (moveTo) {
     const d = new THREE.Vector3(moveTo.x - a.pos.x, 0, moveTo.z - a.pos.z);
     const L = d.length();
@@ -342,6 +347,10 @@ export function chooseState(g: Game, a: Actor): import("./ai").BotState {
   const recoveryPos = own.carrier?.pos ?? own.pos;
   if (own.state !== "AT_BASE" && recoveryPos && nearestHelpers(g, a, recoveryPos, own.carrier ? 3 : 2)) u.PURSUE_OBJECTIVE = Math.max(u.PURSUE_OBJECTIVE, 110);
   u.PURSUE_OBJECTIVE = objectiveUtility(g.botDifficulty, u.PURSUE_OBJECTIVE, a.carrying);
+  if (g.orderUntil > g.time && a.team === g.player?.team && !a.carrying && role !== 'engineer' && role !== 'medic') {
+    if (g.squadOrder === 'attack') u.PURSUE_OBJECTIVE += 100;
+    if (g.squadOrder === 'defend') u.DEFEND_CHOKE += 110;
+  }
   if (b.target) u.ENGAGE_ENEMY = 70 + (b.target.carrying ? 100 : 0) - (a.carrying ? 90 : 0);
   if (a.cls === "spy" && b.target && a.cloaked && !b.target.carrying) u.ENGAGE_ENEMY = 30;
   if (a.cls === "spy" && b.targetBld && b.targetBld.type === "sentry") u.ENGAGE_ENEMY = 90;

@@ -9,6 +9,7 @@ import { botThink, makeBrain, type Brain } from "./ai";
 import { MOTION, weaponPose, reloadProgress } from "./animation";
 import { botReactionTime, type BotDifficulty } from './difficulty';
 import { DEFAULT_PREFERENCES, MATCH_MODES, cycleSlot, availableSlot, assistEligible, freshStats, earnedMedals } from './extras';
+import { FIELD_DEFAULTS, reloadDuration, regeneratedHealth, floorLabel, fieldReport } from './operations';
 
 export type Team = 0 | 1;
 export const TEAM_NAME = ["BLU", "RED"];
@@ -67,6 +68,14 @@ export class Game {
   time = 0;
   declare player: Actor;
   preferences = { ...DEFAULT_PREFERENCES };
+  fieldRules = { ...FIELD_DEFAULTS };
+  paused = false;
+  squadOrder = 'balanced';
+  orderUntil = 0;
+  botCount = 8;
+  inspectUntil = 0;
+  deathRecap = null;
+  damageReceived = [];
   matchMode = "classic";
   stats = freshStats();
   journal: { text: string; time: number }[] = [];
@@ -126,6 +135,7 @@ export class Game {
       if (t === team) roster = roster.filter((c, i) => c !== cls || i === -1);
       for (const c of roster) this.spawnActor(t, c, true, `${TEAM_NAME[t]} ${CLASSES[c].name}`);
     }
+    this.setBotCount(8);
     this.bindInput();
     this.resize();
   }
@@ -233,7 +243,9 @@ export class Game {
     a.weapons = c.weapons.map((def) => ({ def, clip: def.clip, reserve: def.reserve }));
     a.slot = 0; a.input.slot = 0; a.reloadT = 0; a.nextFire = 0; a.lastAttacker = null;
     if (!a.isBot) { this.previousSlot = 1; this.crouchLatched = false; this.spectateId = null; }
-    a.alive = true; a.uber = a.cls === "medic" ? a.uber * 0 : 0; a.uberT = 0; a.invulnT = 0;
+    a.alive = true; a.uber = a.cls === "medic" ? a.uber * 0 : 0; a.uberT = 0; a.invulnT = 2;
+    a.lastDamageTime = this.time;
+    if (a === this.player) this.damageReceived = [];
     a.metal = 200; a.cloaked = false; a.cloak = 1; a.disguised = false; a.scoped = false; a.charge = 0; a.revT = 0;
     a.burnT = 0; a.air = 12; a.healTarget = null; a.buildMode = null; a.carrying = false;
     a.mesh.visible = !a.isBot ? false : true;
@@ -298,11 +310,58 @@ export class Game {
     const index = allies.findIndex(a => a.id === this.spectateId);
     this.spectateId = allies[(index + 1) % allies.length].id;
   }
+  setPaused(paused: boolean) {
+    this.paused = paused; this.keys.clear(); this.mouse.l = this.mouse.r = false;
+    if (paused && document.pointerLockElement) document.exitPointerLock();
+  }
+  setFieldRule(key, value) {
+    if (!(key in FIELD_DEFAULTS)) return;
+    const limits = { captureGoal: [1,10], respawnSeconds: [3,20], pickupSeconds: [3,30] };
+    this.fieldRules[key] = limits[key] ? Math.min(limits[key][1], Math.max(limits[key][0], Math.round(Number(value) || FIELD_DEFAULTS[key]))) : Boolean(value);
+  }
+  setBotCount(count: number) {
+    this.botCount = Math.max(0, Math.min(9, Math.round(count)));
+    for (const team of [0,1]) {
+      let bots = this.actors.filter(a => a.isBot && a.team === team);
+      for (const a of bots.slice(this.botCount)) {
+        for (const f of this.flags) if (f.carrier === a) this.returnFlag(f);
+        for (const b of [...this.buildings]) if (b.owner === a) this.destroyBuilding(b, null);
+        for (const p of this.projectiles) if (p.owner === a) this.killProj(p);
+        this.scene.remove(a.mesh);
+        const beam = this.beams.get(a); if (beam) { this.scene.remove(beam); beam.geometry.dispose(); this.beams.delete(a); }
+        this.actors = this.actors.filter(o => o !== a);
+      }
+      bots = this.actors.filter(a => a.isBot && a.team === team);
+      while (bots.length < this.botCount) {
+        const cls = CLASS_ORDER.find(c => !bots.some(a => a.cls === c)) ?? 'scout';
+        bots.push(this.spawnActor(team, cls, true, `${TEAM_NAME[team]} ${CLASSES[cls].name}`));
+      }
+    }
+  }
+  switchTeam() {
+    this.player.team = 1 - this.player.team;
+    this.changeClassNow(this.player, this.player.cls);
+    this.restartMatch();
+  }
+  issueOrder(order) {
+    if (!['balanced','attack','defend','regroup'].includes(order)) return;
+    this.squadOrder = order; this.orderUntil = this.time + 30;
+    for (const a of this.actors) if (a.team === this.player.team && a.brain) { a.brain.thinkT = 0; a.brain.repathT = 0; }
+    this.logEvent(`Squad order: ${order}`); this.flash(`Squad: ${order.toUpperCase()}`);
+  }
+  demolishBuilding(id: number) {
+    const b = this.buildings.find(b => b.id === id && b.owner === this.player);
+    if (!b) return;
+    this.destroyBuilding(b, null); this.logEvent(`Demolished ${b.type}`);
+  }
+  inspectWeapon() { if (this.player.alive) this.inspectUntil = this.time + 2; }
   restartMatch(mode = this.matchMode) {
     this.matchMode = mode; this.stats = freshStats(); this.journal = []; this.contributors.clear();
     this.time = 0; this.dmgDealt = 0; this.dmgPopT = 0; this.lastKillT = 0;
     this.ping = null; this.medicCall = null; this.nextPing = 0; this.nextCall = 0;
     this.intelLock.clear(); this.spectateId = null; this.killfeed = [];
+    this.deathRecap = null; this.damageReceived = []; this.inspectUntil = 0;
+    this.squadOrder = 'balanced'; this.orderUntil = 0;
     for (const p of [...this.projectiles]) this.killProj(p); this.projectiles = [];
     for (const a of this.actors) { a.kills = 0; a.deaths = 0; a.streak = 0; a.assists = 0; a.lastAttacker = null; }
     this.resetRound(); this.logEvent(`Match started: ${MATCH_MODES[mode].label}`);
@@ -329,12 +388,13 @@ export class Game {
       if (e.code === "KeyE" && !e.repeat) this.callMedic();
       if (e.code === "KeyG" && !e.repeat) this.dropIntel();
       if (e.code === "KeyN" && !e.repeat && !p.alive) this.cycleSpectator();
+      if (e.code === "KeyV" && !e.repeat) this.inspectWeapon();
       if (e.code === "Space" || e.code === "Tab") e.preventDefault();
     };
     const ku = (e: KeyboardEvent) => this.keys.delete(e.code);
     const mm = (e: MouseEvent) => {
       if (!this.locked) return;
-      const s = (this.player.scoped ? 0.0006 : 0.0022) * this.sensitivity;
+      const s = (this.player.scoped ? 0.0006 * this.preferences.scopeSensitivity : 0.0022) * this.sensitivity;
       this.aimSway.x = Math.max(-0.035, Math.min(0.035, e.movementX * 0.001));
       this.aimSway.y = Math.max(-0.025, Math.min(0.025, e.movementY * 0.001));
       this.player.input.yaw -= e.movementX * s;
@@ -418,7 +478,10 @@ export class Game {
 
   // ---------------- update ----------------
   update(dt: number) {
+    if (this.paused) return;
     this.time += dt;
+    if (this.orderUntil <= this.time) this.squadOrder = 'balanced';
+    if (this.waterTex) { this.waterTex.offset.x += dt * 0.012; this.waterTex.offset.y += dt * 0.008; }
     if (this.messageT > 0) this.messageT -= dt;
     this.sounds = this.sounds.filter((s) => this.time - s.t < 1.2);
     if (this.winner !== null) {
@@ -458,6 +521,8 @@ export class Game {
   simulate(a: Actor, dt: number) {
     const c = CLASSES[a.cls], inp = a.input;
     a.yaw = inp.yaw; a.pitch = inp.pitch;
+    a.hp = regeneratedHealth(a.hp, a.maxHp, this.time - (a.lastDamageTime ?? this.time), dt, this.fieldRules.regeneration);
+    if (this.fieldRules.endlessAmmo) for (const w of a.weapons) { w.reserve = w.def.reserve; if (w.def.reserve === 0 && w.def.clip > 0) w.clip = w.def.clip; }
     // status effects
     if (a.uberT > 0) a.uberT -= dt;
     if (a.invulnT > 0) a.invulnT -= dt;
@@ -482,6 +547,7 @@ export class Game {
 
     // movement
     let speed = BASE_SPEED * c.speed;
+    if (this.fieldRules.fastMovement) speed *= 1.25;
     const w = a.weapons[a.slot];
     if (w.def.kind === "minigun" && a.revT > 0) speed *= 0.37 / 0.77;
     if (a.scoped) speed *= 0.3;
@@ -579,7 +645,7 @@ export class Game {
     if (a.reloadT > 0) {
       a.reloadT -= dt;
       if (a.reloadT <= 0) { const need = def.clip - w.clip; const got = Math.min(need, w.reserve); w.clip += got; w.reserve -= got; }
-    } else if (def.reload && def.clip > 0 && w.reserve > 0 && (w.clip === 0 || (inp.reload && w.clip < def.clip))) a.reloadT = def.reload;
+    } else if (def.reload && def.clip > 0 && w.reserve > 0 && (w.clip === 0 || (inp.reload && w.clip < def.clip) || (a === this.player && this.preferences.autoReload && !inp.fire && w.clip < def.clip && this.time >= a.nextFire + 1))) a.reloadT = reloadDuration(def.reload, this.fieldRules.rapidReload);
 
     // class alt-fires
     if (a.cls === "spy" && altEdge && (a.cloaked || a.cloak > 0.1)) { a.cloaked = !a.cloaked; this.refreshLook(a); }
@@ -612,6 +678,8 @@ export class Game {
     if (def.clip > 0 && w.clip <= 0) return;
     if (a.reloadT > 0 && w.clip <= 0) return;
     a.reloadT = 0;
+    a.invulnT = 0;
+    if (a === this.player) this.inspectUntil = 0;
     a.nextFire = this.time + def.rate;
     a.weaponAnim = 1;
     if (def.clip > 0) w.clip--;
@@ -827,7 +895,7 @@ export class Game {
       const fall = o === direct ? 1 : 1 - 0.5 * Math.min(1, d / radius);
       const kb = c.clone().sub(pos); if (kb.lengthSq() < 0.01) kb.set(0, 1, 0); kb.normalize();
       if (self) {
-        this.damage(o, dmg * fall * 0.4, owner, name);
+        if (!this.fieldRules.safeJumps) this.damage(o, dmg * fall * 0.4, owner, name);
         o.vel.addScaledVector(kb, 15 * fall); o.vel.y += 6 * fall; o.onGround = false;
       } else {
         this.damage(o, dmg * fall, owner, name);
@@ -845,6 +913,11 @@ export class Game {
     if (!t.alive || this.isInvuln(t) || amount <= 0) return;
     if (from && from !== t && from.team === t.team) return;
     const actualDamage = Math.min(t.hp, amount);
+    t.lastDamageTime = this.time;
+    if (t === this.player) {
+      this.damageReceived.push({ name: from?.name ?? 'Environment', weapon, damage: Math.round(actualDamage), time: this.time });
+      this.damageReceived = this.damageReceived.filter(hit => this.time - hit.time < 12).slice(-8);
+    }
     t.hp -= amount;
     if (from && from !== t) {
       let hits = this.contributors.get(t.id);
@@ -887,9 +960,11 @@ export class Game {
     }
     this.contributors.delete(t.id);
     if (by === this.player) { this.stats.kills++; this.logEvent(`Eliminated ${t.name} · ${weapon}`); }
-    if (t === this.player) { this.logEvent(`Killed by ${by?.name ?? weapon}`); this.spectateId = by?.team === t.team ? by.id : null; }
+    if (t === this.player) { this.logEvent(`Killed by ${by?.name ?? weapon}`); this.spectateId = by?.team === t.team ? by.id : null;
+      this.deathRecap = { killer: by?.name ?? 'Environment', weapon, distance: by ? Math.round(by.pos.distanceTo(t.pos)) : null, hits: [...this.damageReceived] };
+    }
     t.alive = false; t.hp = 0; t.deaths++;
-    t.respawnT = RESPAWN;
+    t.respawnT = this.fieldRules.respawnSeconds;
     t.mesh.visible = false;
     t.scoped = false; t.cloaked = false; t.healTarget = null; t.carrying = false;
     t.streak = 0;
@@ -1070,7 +1145,7 @@ export class Game {
           this.feed(`${c.name} captured the ${TEAM_NAME[f.team]} intel!`, c.team);
           this.flash(`${TEAM_NAME[c.team]} team captured the intelligence!`);
           c.carrying = false; this.returnFlag(f);
-          if (this.scores[c.team] >= WIN_CAPS && this.winner === null) { this.winner = c.team; this.winT = 8; }
+          if (this.scores[c.team] >= this.fieldRules.captureGoal && this.winner === null) { this.winner = c.team; this.winT = 8; }
         }
         continue;
       }
@@ -1116,7 +1191,7 @@ export class Game {
           for (const w of a.weapons) { if (w.def.reserve > 0) w.reserve = Math.min(w.def.reserve, w.reserve + Math.ceil(w.def.reserve * frac)); else w.clip = Math.min(w.def.clip, w.clip + Math.ceil(w.def.clip * frac)); }
           a.metal = Math.min(200, a.metal + 200 * frac);
         }
-        p.active = false; p.mesh.visible = false; p.respawnT = 10;
+        p.active = false; p.mesh.visible = false; p.respawnT = this.fieldRules.pickupSeconds;
         if (p.temp > 0) { this.scene.remove(p.mesh); p.temp = -1; }
         break;
       }
@@ -1128,7 +1203,7 @@ export class Game {
     for (const f of this.flags) this.returnFlag(f);
     for (const b of [...this.buildings]) this.destroyBuilding(b, null);
     for (const a of this.actors) this.respawn(a);
-    this.flash("New round! Capture the enemy intelligence 3 times.");
+    this.flash(`New round! Capture the enemy intelligence ${this.fieldRules.captureGoal} times.`);
   }
 
   // ---------------- effects ----------------
@@ -1227,17 +1302,19 @@ export class Game {
     }
     const fov = p.alive && p.scoped ? 20 : this.preferences.fov;
     if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
-    this.viewmodel.visible = p.alive && !p.scoped;
+    this.viewmodel.visible = p.alive && !p.scoped && this.preferences.showWeapon;
     const vdef = p.weapons[p.slot]?.def;
     if (vdef) {
       this.syncViewmodel(p);
       const meleeSwing = ["melee", "knife", "wrench"].includes(vdef.kind);
-      const reload = p.reloadT > 0 ? reloadProgress(p.reloadT, vdef.reload ?? 0) : 0;
+      const reload = p.reloadT > 0 ? reloadProgress(p.reloadT, reloadDuration(vdef.reload ?? 0, this.fieldRules.rapidReload)) : 0;
       const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const pose = weaponPose(p.weaponAnim, reload, meleeSwing, p.onGround ? Math.hypot(p.vel.x, p.vel.z) : 0, this.drawT, !reduced && this.preferences.weaponBob);
       this.aimSway.x *= Math.exp(-MOTION.swayDamping * dt); this.aimSway.y *= Math.exp(-MOTION.swayDamping * dt);
       this.viewmodel.position.set(0.32 + pose.x - this.aimSway.x, -0.28 + pose.y + this.aimSway.y, -0.7 + pose.z);
       this.viewmodel.rotation.set(pose.rx, pose.ry + this.aimSway.x, pose.rz);
+      if (this.preferences.leftHanded) { this.viewmodel.position.x *= -1; this.viewmodel.rotation.z *= -1; }
+      if (this.inspectUntil > this.time) { const arc = Math.sin((1 - (this.inspectUntil - this.time) / 2) * Math.PI); this.viewmodel.rotation.y += arc * 0.8; this.viewmodel.rotation.z -= arc * 0.5; this.viewmodel.position.y += arc * 0.08; }
       const rotor = this.viewmodel.getObjectByName("barrel-rotor");
       if (rotor) rotor.rotation.z += p.revT * dt * 24;
       p.weaponAnim = Math.max(0, p.weaponAnim - dt * (meleeSwing ? 3.5 : MOTION.recoilDecay));
@@ -1312,10 +1389,17 @@ export class Game {
       }
     }
     return {
+      operations: { paused: this.paused, rules: { ...this.fieldRules }, botCount: this.botCount,
+        order: this.squadOrder, orderSeconds: Math.max(0,Math.ceil(this.orderUntil-this.time)),
+        deathRecap: this.deathRecap, report: fieldReport(this.stats, p.deaths, this.time),
+        objectiveDistance: Math.round(p.pos.distanceTo(p.carrying ? this.flags[p.team].home : this.flags[1-p.team].pos)),
+        objectiveFloor: floorLabel(p.pos.y, (p.carrying ? this.flags[p.team].home : this.flags[1-p.team].pos).y),
+        stickies: this.projectiles.filter(proj => proj.owner === p && proj.kind === 'sticky' && !proj.dead).length,
+        protected: p.invulnT > 0, buildings: this.buildings.filter(b => b.owner === p).map(b => ({ id:b.id, type:b.type, level:b.level, hp:Math.ceil(b.hp) })) },
       extras: { stats: { ...this.stats }, medals: earnedMedals(this.stats), journal: this.journal, mode: this.matchMode,
         ping: this.ping && this.ping.until > this.time ? { label: this.ping.label, distance: Math.round(p.pos.distanceTo(this.ping.pos)), angle: Math.atan2(-(this.ping.pos.x-p.pos.x), -(this.ping.pos.z-p.pos.z))-p.yaw, seconds: Math.ceil(this.ping.until-this.time) } : null,
         medicCall: this.medicCall?.until > this.time, spectator: this.actors.find(a => a.id === this.spectateId && a.alive)?.name ?? null },
-      teammate, reloadProgress: p.reloadT > 0 ? reloadProgress(p.reloadT, w?.def.reload ?? 0) : 0,
+      teammate, reloadProgress: p.reloadT > 0 ? reloadProgress(p.reloadT, reloadDuration(w?.def.reload ?? 0, this.fieldRules.rapidReload)) : 0,
       hp: Math.ceil(p.hp), maxHp: p.maxHp, alive: p.alive, respawnIn: Math.ceil(p.respawnT), cls: p.cls, team: p.team,
       weapon: w?.def.name ?? "", clip: w?.clip ?? 0, reserve: w?.reserve ?? 0, kind: w?.def.kind ?? "", reloading: p.reloadT > 0, maxClip: w?.def.clip ?? 0,
       uber: p.uber, uberActive: p.uberT > 0, metal: p.metal, cloak: p.cloak, cloaked: p.cloaked, disguised: p.disguised,
