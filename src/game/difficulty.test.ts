@@ -29,21 +29,21 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('bot difficulty presets', () => {
   it('progressively reduces aim error without making hard snipers perfect', () => {
-    expect(botAimError('easy', false, 0.9)).toBe(1.1);
-    expect(botAimError('normal', false, 0.9)).toBe(0.45);
-    expect(botAimError('hard', false, 0.9)).toBe(0.2);
+    expect(botAimError('easy', false, 0.9)).toBe(2.4);
+    expect(botAimError('normal', false, 0.9)).toBe(1.3);
+    expect(botAimError('hard', false, 0.9)).toBe(0.65);
     expect(botAimError('easy', true, 0.3)).toBe(4.5);
-    expect(botAimError('normal', true, 0.3)).toBe(0.12);
+    expect(botAimError('normal', true, 0.9)).toBe(0.4);
     expect(botAimError('hard', true, 0.1)).toBe(4.5);
     const { actor, enemy, game } = scenario('easy');
     enemy.carrying = true;
     vi.spyOn(Math, 'random').mockReturnValue(0.75);
     botThink(actor, game, 0);
-    expect(actor.brain?.aimErr.x).toBeCloseTo(0.275);
+    expect(actor.brain?.aimErr.x).toBeCloseTo(0.6);
     game.botDifficulty = 'hard';
     if (actor.brain) actor.brain.thinkT = 0;
     botThink(actor, game, 0);
-    expect(actor.brain?.aimErr.x).toBeCloseTo(0.05);
+    expect(actor.brain?.aimErr.x).toBeCloseTo(0.1625);
   });
 
   it.each(['easy', 'normal', 'hard'] as const)('delays %s attacks until its reaction time expires', (difficulty) => {

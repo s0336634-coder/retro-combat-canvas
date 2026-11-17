@@ -1,7 +1,8 @@
 /** Match additions independent of React and WebGL. */
+import { DISPLAY_DEFAULTS } from './operations';
 export type MatchMode = 'classic' | 'melee' | 'lowGravity';
 export const MATCH_MODES = { classic: { label: 'Classic', gravity: 1 }, melee: { label: 'Melee only', gravity: 1 }, lowGravity: { label: 'Low gravity', gravity: 0.45 } };
-export const DEFAULT_PREFERENCES = { emptySwitch: false, toggleCrouch: false, invertY: false, fov: 80, weaponBob: true, hudScale: 1, crosshair: 'cross' as 'cross' | 'dot' | 'ring', minimap: true };
+export const DEFAULT_PREFERENCES = { ...DISPLAY_DEFAULTS, emptySwitch: false, toggleCrouch: false, invertY: false, fov: 80, weaponBob: true, hudScale: 1, crosshair: 'cross' as 'cross' | 'dot' | 'ring', minimap: true };
 export type Preferences = typeof DEFAULT_PREFERENCES;
 export function cycleSlot(slot: number, direction: number, count: number) { return count > 0 ? (slot + Math.sign(direction) + count) % count : 0; }
 export function availableSlot(weapons: { clip: number; def: { clip: number } }[], slot: number) {
