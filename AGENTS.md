@@ -18,3 +18,4 @@
 - Keep match reward thresholds, mutator definitions, and weapon-selection helpers in renderer-independent `extras.ts` with tests so match additions remain verifiable without WebGL.
 - Match preferences are session-only and the shared Match Desk reads live game statistics; explicit match restarts reset rewards and temporary combat state to prevent stale results.
 - Keep bot navigation and tactical regression tests independent of WebGL; validate real-map routes and class decisions with lightweight game fixtures.
+- Keep field-rule defaults and telemetry calculations in renderer-independent operations.ts; session-only controls use Game methods so menus and live play share one state.
